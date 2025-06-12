@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from agent.objects.calculation_metadata import CalculationMetadata
-from typing import Optional
 
 
 @dataclass

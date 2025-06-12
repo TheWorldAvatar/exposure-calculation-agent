@@ -1,6 +1,6 @@
 from agent.utils.ts_client import TimeSeriesClient
 from agent.calculation.calculation_input import CalculationInput
-from agent.calculation.kg_client import KgClient
+from agent.utils.kg_client import KgClient
 
 kg_client = KgClient()
 

@@ -2,7 +2,7 @@ from flask import Blueprint, request
 from twa import agentlogging
 from agent.calculation.trajectory_count import trajectory_count
 from agent.utils.constants import TRAJECTORY_COUNT
-from agent.calculation.kg_client import KgClient
+from agent.utils.kg_client import KgClient
 from agent.calculation.calculation_input import CalculationInput
 
 logger = agentlogging.get_logger('dev')
@@ -21,7 +21,7 @@ kg_client = KgClient()
 # core agent, takes IRIs of calculation, subject, and exposure as inputs
 def api():
     """
-    This is the core API to process calculations, typically triggered by APIs in 
+    This is the core agent to process calculations, typically triggered by APIs in 
     agent.interactor.trigger_calculation 
     """
     request_json = request.get_json()

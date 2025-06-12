@@ -4,7 +4,7 @@ from twa import agentlogging
 from agent.interactor.initialise_calculation import INIT_ROUTE
 from agent.utils.constants import TRAJECTORY_COUNT
 from agent.calculation.api import CALCULATE_ROUTE
-from agent.interactor.kg_client import KgClient
+from agent.utils.kg_client import KgClient
 
 logger = agentlogging.get_logger('dev')
 kg_client = KgClient()  # for getting data from KG, initialise once
@@ -27,12 +27,14 @@ def trajectory_count():
     exposure_table = request.args.get(
         'exposure_table')  # this is the table name
 
+    # get dataset iri to pass the core calculation agent
     exposure_dataset_iri = kg_client.get_dataset_iri(table_name=exposure_table)
 
-    # this will initialise a calculation if it does not exist, or return an existing iri
+    # this will initialise a calculation if it does not exist and return the instantiated iri, or return an existing iri
     calculation_response = requests.post('http://localhost:5000/' +
                                          INIT_ROUTE, json={"rdf_type": TRAJECTORY_COUNT, "distance": distance})
 
+    # call core calculation agent
     requests.post('http://localhost:5000/' + CALCULATE_ROUTE,
                   json={"calculation": calculation_response.text, "subject": subject, "exposure": exposure_dataset_iri})
     return ''

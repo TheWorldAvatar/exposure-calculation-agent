@@ -2,7 +2,7 @@ from flask import Blueprint, request
 from twa import agentlogging
 from utils.constants import CALCULATION_TYPES
 from agent.objects.calculation_metadata import CalculationMetadata
-from agent.interactor.kg_client import KgClient
+from agent.utils.kg_client import KgClient
 
 logger = agentlogging.get_logger('dev')
 
@@ -15,6 +15,13 @@ kg_client = KgClient()  # for getting data from KG
 
 @initialise_calculation_bp.route(INIT_ROUTE, methods=['POST'])
 def api():
+    """
+    JSON input
+    {
+        "rdf_type": "http://class"
+        "distance": 10
+    }
+    """
     logger.info('Received request to instantiate a calculation instance')
     metadata = request.get_json()
 
