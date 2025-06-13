@@ -2,7 +2,7 @@ import os
 
 
 def retrieve_default_settings():
-    global NAMESPACE, DATABASE
+    global NAMESPACE, DATABASE, STACK_NAME
 
     NAMESPACE = os.getenv("NAMESPACE")
     if NAMESPACE is None:
@@ -11,6 +11,8 @@ def retrieve_default_settings():
     DATABASE = os.getenv('DATABASE')
     if DATABASE is None:
         DATABASE = 'postgres'
+
+    STACK_NAME = os.getenv('STACK_NAME')
 
 
 # run when module is imported

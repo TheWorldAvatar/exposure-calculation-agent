@@ -2,7 +2,7 @@ from flask import Blueprint, request
 from twa import agentlogging
 from agent.calculation.trajectory_count import trajectory_count
 from agent.utils.constants import TRAJECTORY_COUNT
-from agent.utils.kg_client import KgClient
+from agent.utils.kg_client import kg_client
 from agent.calculation.calculation_input import CalculationInput
 
 logger = agentlogging.get_logger('dev')
@@ -14,7 +14,6 @@ function_map = {
 }
 
 CALCULATE_ROUTE = '/calculate_exposure'
-kg_client = KgClient()
 
 
 @calculation_blueprint.route(CALCULATE_ROUTE, methods=['POST'])
@@ -23,6 +22,10 @@ def api():
     """
     This is the core agent to process calculations, typically triggered by APIs in 
     agent.interactor.trigger_calculation 
+    Input should be a JSON payload with the following keys, with IRI(s) as their values
+    1) subject (value can be an IRI array or a single IRI)
+    2) exposure (single IRI)
+    3) calculation (single IRI)
     """
     request_json = request.get_json()
     calculation_iri = request_json['calculation']
@@ -35,6 +38,5 @@ def api():
     calculation_input = CalculationInput(
         subject=subject, exposure=exposure, calculation_metadata=calculation_metadata)
 
-    # calls the appropriate function according to calculation
-    response = function_map[calculation_metadata.get_rdf_type()](
-        calculation_input)
+    # calls the appropriate function according to calculation rdf_type
+    return function_map[calculation_metadata.rdf_type](calculation_input)
