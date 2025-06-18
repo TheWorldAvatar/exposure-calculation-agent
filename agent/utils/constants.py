@@ -1,5 +1,6 @@
 PREFIX_EXPOSURE = 'https://www.theworldavatar.com/kg/ontoexposure/'
 PREFIX_DCAT = 'http://www.w3.org/ns/dcat#'
+PREFIX_DERIVATION = 'https://www.theworldavatar.com/kg/ontoderivation/'
 
 # default columns from gdal
 VECTOR_GEOMETRY_COLUMN = 'wkb_geometry'
@@ -13,6 +14,9 @@ DCTERM_TITLE = 'http://purl.org/dc/terms/title'
 DATASET_PREDICATE = PREFIX_DCAT + 'dataset'
 SERVES_DATASET = PREFIX_DCAT + 'servesDataset'
 ENDPOINT_URL = PREFIX_DCAT + 'endpointURL'
+IS_DERIVED_USING = PREFIX_DERIVATION + 'isDerivedUsing'
+IS_DERIVED_FROM = PREFIX_DERIVATION + 'isDerivedFrom'
+BELONGS_TO = PREFIX_DERIVATION + 'belongsTo'
 
 # time series related
 TIMESERIES_NAMESPACE = 'https://www.theworldavatar.com/kg/ontotimeseries/'
@@ -23,6 +27,8 @@ HAS_TIME_CLASS = TIMESERIES_NAMESPACE + 'hasTimeClass'
 # types
 DCAT_DATASET = PREFIX_DCAT + 'Dataset'
 TRIP = PREFIX_EXPOSURE + 'Trip'
+EXPOSURE_RESULT = PREFIX_EXPOSURE + 'ExposureResult'
+DERIVATION = PREFIX_DERIVATION + 'Derivation'
 POSTGIS_SERVICE = 'https://theworldavatar.io/kg/service#PostGIS'
 
 TRAJECTORY_COUNT = PREFIX_EXPOSURE + 'TrajectoryCount'

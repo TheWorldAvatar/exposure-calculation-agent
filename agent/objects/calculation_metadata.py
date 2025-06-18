@@ -7,11 +7,12 @@ class CalculationMetadataException(Exception):
 
 
 class CalculationMetadata():
-    def __init__(self, rdf_type, distance, upperbound=None, lowerbound=None):
+    def __init__(self, rdf_type, distance, upperbound=None, lowerbound=None, iri=None):
         self.rdf_type = rdf_type
         self.distance = distance
         self.upperbound = upperbound
         self.lowerbound = lowerbound
+        self.iri = iri
 
     def get_query(self, var: str) -> str:
         query = f"""

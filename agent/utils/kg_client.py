@@ -7,6 +7,7 @@ from twa import agentlogging
 import json
 import uuid
 from agent.utils.env_configs import STACK_NAME
+from agent.calculation.calculation_input import CalculationInput
 
 logger = agentlogging.get_logger('dev')
 
@@ -53,7 +54,7 @@ class KgClient():
         else:
             lowerbound = None
 
-        return CalculationMetadata(rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound)
+        return CalculationMetadata(rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, iri=iri)
 
     def get_trip(self, point_iri: str):
         query = f"""
@@ -127,6 +128,51 @@ class KgClient():
                 'Dataset must be located within the same stack')
 
         return ExposureDataset(url=url, table_name=table_name)
+
+    def get_exposure_result(self, calculation_input: CalculationInput):
+        query = f"""
+        SELECT ?result
+        WHERE {{
+            ?derivation <{constants.IS_DERIVED_FROM}> <{calculation_input.subject}>;
+                <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
+            ?result a <{constants.EXPOSURE_RESULT}>;
+                <{constants.BELONGS_TO}> ?derivation.
+        }}
+        """
+        query_result = self.remote_store_client.executeQuery(query)
+
+        if query_result.isEmpty():
+            return None
+        elif query_result.length() == 1:
+            return query_result.getJSONObject(0).getString('result')
+        else:
+            raise KgClientException(
+                'Unexpected query result size ' + query_result.toString())
+
+    def instantiate_result(self, calculation_input: CalculationInput):
+        result_iri = constants.PREFIX_EXPOSURE + str(uuid.uuid4())
+        derivation_iri = constants.PREFIX_DERIVATION + str(uuid.uuid4())
+        query = f"""
+        INSERT DATA{{
+            <{result_iri}> a <{constants.EXPOSURE_RESULT}>;
+                <{constants.BELONGS_TO}> <{derivation_iri}>.
+            <{derivation_iri}> a <{constants.DERIVATION}>;
+                <{constants.IS_DERIVED_FROM}> <{calculation_input.subject}>;
+                <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
+        }}
+        """
+        self.remote_store_client.executeUpdate(query)
+        return result_iri
+
+    def get_time_series(self, iri: str):
+        query = f"""
+        SELECT ?time_series
+        WHERE {{
+            <{iri}> <{constants.HAS_TIME_SERIES}> ?time_series.
+        }}
+        """
+        query_result = self.remote_store_client.executeQuery(query)
+        return query_result.getJSONObject(0).getString('time_series')
 
 
 kg_client = KgClient()  # global object shared between modules

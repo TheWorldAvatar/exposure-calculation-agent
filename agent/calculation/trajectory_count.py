@@ -41,13 +41,21 @@ def trajectory_count(calculation_input: CalculationInput):
         logger.info('Trajectory time series is empty')
         return None
 
+    # Java object list
     postgis_point_list = trajectory_time_series.getValuesAsPoint(
         calculation_input.subject)
 
+    # list of python tuples
     points = [(p.getX(), p.getY()) for p in postgis_point_list]
 
-    trips = process_trip(
-        trajectory_time_series.getValuesAsInteger(trip_iri), points)
+    logger.info('Processing trips')
+    if trip_iri is not None:
+        # split trajectory into trips
+        trips = process_trip(
+            trajectory_time_series.getValuesAsInteger(trip_iri), points)
+    else:
+        # entire trajectory considered as a single trip
+        trips = [Trip(trajectory=LineString(points))]
 
     exposure_dataset = kg_client.get_exposure_dataset(
         calculation_input.exposure)
@@ -59,6 +67,7 @@ def trajectory_count(calculation_input: CalculationInput):
 
     srid = postgis_point_list[0].getSrid()
 
+    logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
         for trip in trips:
             line = trip.trajectory
@@ -74,6 +83,21 @@ def trajectory_count(calculation_input: CalculationInput):
                 conn=conn, query=sql, params=replacements)
             trip.set_exposure_result(query_result[0][0])
 
+    # check if an existing result time series exists
+    result_iri = kg_client.get_exposure_result(calculation_input)
+
+    # create a new column sharing the same time series with trajectory if it does not exist
+    if result_iri is None:
+        result_iri = kg_client.instantiate_result(calculation_input)
+        time_series_iri = kg_client.get_time_series(calculation_input.subject)
+        ts_client.add_columns(time_series_iri=time_series_iri, data_iri=[
+                              result_iri], class_list=[baselib_view.java.lang.Integer.TYPE])
+
+    result_time_series = create_result_time_series(
+        trips, result_iri=result_iri, time_list=trajectory_time_series.getTimes(), ts_client=ts_client)
+
+    ts_client.add_time_series(result_time_series)
+
     return ''
 
 
@@ -82,8 +106,8 @@ def process_trip(trip_index_array, points):
     returns an array Trip objects
    """
     trips = []
-    current_trip_index = trip_index_array[0]
-    lowerbound_index = 0
+    current_trip_index = trip_index_array[0]  # index given by trip calculation
+    lowerbound_index = 0  # position in the trajectory array
 
     # records a new tuple every time the trip index changes
     for i in range(1, len(trip_index_array)):
@@ -122,3 +146,15 @@ def convert_input_time_for_timeseries(time, point_iri: str):
         args_array[0] = java_string
 
         return time_clazz.getMethod("parse", param_types).invoke(None, args_array)
+
+
+def create_result_time_series(trips: list[Trip], result_iri: str, time_list, ts_client: TimeSeriesClient):
+    result_list = []
+
+    for trip in trips:
+        # repeat the same value for each portion of the trip in each time row
+        size = trip.upper_index - trip.lower_index + 1
+        temp_list = [trip.exposure_result] * size
+        result_list.extend(temp_list)
+
+    return ts_client.create_time_series(times=time_list, data_iri_list=[result_iri], values=[result_list])
