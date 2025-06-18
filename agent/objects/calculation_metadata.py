@@ -61,17 +61,17 @@ class CalculationMetadata():
         elif self.upperbound is not None and is_datetime(self.upperbound):
             where_clauses.append(
                 f"?{var} <{HAS_UPPERBOUND}> \"{self.upperbound}\"^^xsd:dateTime.")
-        else:
+        elif self.upperbound is not None:
             raise CalculationMetadataException(
                 'Unsupported format of upperbound')
 
         if self.lowerbound is not None and is_integer(self.lowerbound):
             where_clauses.append(
                 f"?{var} <{HAS_LOWERBOUND}> {self.lowerbound}.")
-        elif self.upperbound is not None and is_datetime(self.lowerbound):
+        elif self.lowerbound is not None and is_datetime(self.lowerbound):
             where_clauses.append(
                 f"?{var} <{HAS_LOWERBOUND}> \"{self.lowerbound}\"xsd:dateTime.")
-        else:
+        elif self.lowerbound is not None:
             raise CalculationMetadataException(
                 'Unsupported format of lowerbound')
 
