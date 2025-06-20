@@ -1,0 +1,53 @@
+{
+    "ServiceSpec": {
+        "Name": "exposure-calculation-agent",
+        "TaskTemplate": {
+            "ContainerSpec": {
+                "Image": "exposure-calculation-agent:1.0.0",
+                "Env": [
+                    "NAMESPACE=kb",
+                    "DATABASE=postgres"
+                ],
+                "Mounts": [
+                    {
+                        "Type": "volume",
+                        "Source": "exposure-calculation-agent",
+                        "Target": "/app/queries"
+                    }
+                ],
+                "Configs": [
+                    {
+                        "ConfigName": "blazegraph"
+                    },
+                    {
+                        "ConfigName": "postgis"
+                    },
+                    {
+                        "ConfigName": "ontop"
+                    }
+                ],
+                "Secrets": [
+                    {
+                        "SecretName": "postgis_password"
+                    }
+                ]
+            }
+        },
+        "EndpointSpec": {
+            "Ports": [
+                {
+                    "Name": "web",
+                    "Protocol": "tcp",
+                    "TargetPort": "5678",
+                    "PublishedPort": "5678"
+                }
+            ]
+        }
+    },
+    "endpoints": {
+        "rest": {
+            "url": "http://localhost:5000/",
+            "externalPath": "/exposure-calculation-agent/"
+        }
+    }
+}
