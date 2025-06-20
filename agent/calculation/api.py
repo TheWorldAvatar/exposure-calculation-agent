@@ -1,8 +1,9 @@
 from flask import Blueprint, request
 from twa import agentlogging
 from agent.calculation.trajectory_count import trajectory_count
-from agent.utils.constants import TRAJECTORY_COUNT
-from agent.utils.kg_client import kg_client
+from agent.calculation.simple_count import simple_count
+from agent.objects.calculation_metadata import get_calculation_metadata
+from agent.utils.constants import TRAJECTORY_COUNT, SIMPLE_COUNT
 from agent.calculation.calculation_input import CalculationInput
 
 logger = agentlogging.get_logger('dev')
@@ -10,7 +11,8 @@ calculation_blueprint = Blueprint('calculation_blueprint', __name__)
 
 # map of RDF type of calculation to the function to call
 function_map = {
-    TRAJECTORY_COUNT: trajectory_count
+    TRAJECTORY_COUNT: trajectory_count,
+    SIMPLE_COUNT: simple_count
 }
 
 CALCULATE_ROUTE = '/calculate_exposure'
@@ -33,7 +35,7 @@ def api():
     exposure = request_json['exposure']
 
     # gives a CalculationMetadata object
-    calculation_metadata = kg_client.get_calculation_metadata(calculation_iri)
+    calculation_metadata = get_calculation_metadata(calculation_iri)
 
     calculation_input = CalculationInput(
         subject=subject, exposure=exposure, calculation_metadata=calculation_metadata)

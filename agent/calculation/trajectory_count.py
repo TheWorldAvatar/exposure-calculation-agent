@@ -1,6 +1,8 @@
+import uuid
+from agent.objects.exposure_dataset import get_exposure_dataset
+from agent.utils import constants
 from agent.utils.ts_client import TimeSeriesClient
 from agent.calculation.calculation_input import CalculationInput
-from agent.utils.kg_client import kg_client
 from shapely.geometry import LineString
 from twa import agentlogging
 from agent.utils.baselib_gateway import baselib_view, jpsBaseLibGW
@@ -11,6 +13,7 @@ logger = agentlogging.get_logger('dev')
 
 
 def trajectory_count(calculation_input: CalculationInput):
+    from agent.utils.kg_client import kg_client
     # subject must be a time series
     ts_client = TimeSeriesClient(calculation_input.subject)
     lowerbound = calculation_input.calculation_metadata.lowerbound
@@ -18,15 +21,15 @@ def trajectory_count(calculation_input: CalculationInput):
 
     # convert upperbound and lowerbound into the correct types from string
     if upperbound is not None:
-        upperbound = convert_input_time_for_timeseries(
+        upperbound = _convert_input_time_for_timeseries(
             upperbound, calculation_input.subject)
 
     if lowerbound is not None:
-        lowerbound = convert_input_time_for_timeseries(
+        lowerbound = _convert_input_time_for_timeseries(
             lowerbound, calculation_input.subject)
 
     # check if there is a trip instance attached to this trajectory
-    trip_iri = kg_client.get_trip(calculation_input.subject)
+    trip_iri = _get_trip(calculation_input.subject)
 
     data_iri_list = [calculation_input.subject]
     if trip_iri is not None:
@@ -51,16 +54,15 @@ def trajectory_count(calculation_input: CalculationInput):
     logger.info('Processing trips')
     if trip_iri is not None:
         # split trajectory into trips
-        trips = process_trip(
+        trips = _process_trip(
             trajectory_time_series.getValuesAsInteger(trip_iri), points)
     else:
         # entire trajectory considered as a single trip
         trips = [Trip(trajectory=LineString(points))]
 
-    exposure_dataset = kg_client.get_exposure_dataset(
-        calculation_input.exposure)
+    exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
-    with open("agent/calculation/templates/trajectory_count.sql", "r") as f:
+    with open("agent/calculation/templates/count.sql", "r") as f:
         sql = f.read()
 
     sql = sql.format(TABLE_PLACEHOLDER=exposure_dataset.table_name)
@@ -69,41 +71,46 @@ def trajectory_count(calculation_input: CalculationInput):
 
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
-        for trip in trips:
-            line = trip.trajectory
+        with conn.cursor() as cur:
+            for trip in trips:
+                line = trip.trajectory
 
-            # two types of replacement, table name via python, variables via psycopg2,
-            # supposed to be more secure against sql injection like this
-            replacements = {
-                'SRID_PLACEHOLDER': str(srid),
-                'LINE_PLACEHOLDER': line.wkt,
-                'DISTANCE_PLACEHOLDER': calculation_input.calculation_metadata.distance
-            }
-            query_result = postgis_client.execute_query(
-                conn=conn, query=sql, params=replacements)
-            trip.set_exposure_result(query_result[0][0])
+                # two types of replacement, table name via python, variables via psycopg2,
+                # supposed to be more secure against sql injection like this
+                replacements = {
+                    'SRID_PLACEHOLDER': str(srid),
+                    'GEOMETRY_PLACEHOLDER': line.wkt,
+                    'DISTANCE_PLACEHOLDER': calculation_input.calculation_metadata.distance
+                }
+
+                cur.execute(sql, replacements)
+                if cur.description:
+                    query_result = cur.fetchall()
+                    trip.set_exposure_result(query_result[0][0])
 
     # check if an existing result time series exists
-    result_iri = kg_client.get_exposure_result(calculation_input)
+    result_iri = _get_exposure_result(calculation_input)
 
     # create a new column sharing the same time series with trajectory if it does not exist
     if result_iri is None:
-        result_iri = kg_client.instantiate_result(calculation_input)
+        result_iri = _instantiate_result(calculation_input)
         time_series_iri = kg_client.get_time_series(calculation_input.subject)
         ts_client.add_columns(time_series_iri=time_series_iri, data_iri=[
                               result_iri], class_list=[baselib_view.java.lang.Integer.TYPE])
 
-    result_time_series = create_result_time_series(
+    # create a Java time series object to upload to database
+    result_time_series = _create_result_time_series(
         trips, result_iri=result_iri, time_list=trajectory_time_series.getTimes(), ts_client=ts_client)
 
+    # uploads data to database
     ts_client.add_time_series(result_time_series)
 
-    return ''
+    return 'Trajectory count complete', 200
 
 
-def process_trip(trip_index_array, points):
+def _process_trip(trip_index_array, points):
     """
-    returns an array Trip objects
+    returns a list of Trip objects
    """
     trips = []
     current_trip_index = trip_index_array[0]  # index given by trip calculation
@@ -123,7 +130,8 @@ def process_trip(trip_index_array, points):
     return trips
 
 
-def convert_input_time_for_timeseries(time, point_iri: str):
+def _convert_input_time_for_timeseries(time, point_iri: str):
+    from agent.utils.kg_client import kg_client
     # assumes time is in seconds or milliseconds, if an exception is thrown,
     # queries the time class from KG (e.g. java.time.Instant) and use the
     # parse method to parse time into the correct Java object
@@ -148,7 +156,7 @@ def convert_input_time_for_timeseries(time, point_iri: str):
         return time_clazz.getMethod("parse", param_types).invoke(None, args_array)
 
 
-def create_result_time_series(trips: list[Trip], result_iri: str, time_list, ts_client: TimeSeriesClient):
+def _create_result_time_series(trips: list[Trip], result_iri: str, time_list, ts_client: TimeSeriesClient):
     result_list = []
 
     for trip in trips:
@@ -158,3 +166,62 @@ def create_result_time_series(trips: list[Trip], result_iri: str, time_list, ts_
         result_list.extend(temp_list)
 
     return ts_client.create_time_series(times=time_list, data_iri_list=[result_iri], values=[result_list])
+
+
+def _get_trip(point_iri: str):
+    from agent.utils.kg_client import kg_client
+    query = f"""
+    SELECT ?trip
+    WHERE {{
+        <{point_iri}> <{constants.HAS_TIME_SERIES}> ?time_series.
+        ?trip <{constants.HAS_TIME_SERIES}> ?time_series;
+            a <{constants.TRIP}>.
+    }}
+    """
+    query_results = kg_client.remote_store_client.executeQuery(query)
+
+    if query_results.isEmpty():
+        return None
+    elif query_results.length() > 1:
+        raise Exception('More than 1 trip instance detected?')
+    else:
+        return query_results.getJSONObject(0).getString('trip')
+
+
+def _get_exposure_result(calculation_input: CalculationInput):
+    from agent.utils.kg_client import kg_client
+    query = f"""
+    SELECT ?result
+    WHERE {{
+        ?derivation <{constants.IS_DERIVED_FROM}> <{calculation_input.subject}>;
+            <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
+        ?result a <{constants.EXPOSURE_RESULT}>;
+            <{constants.BELONGS_TO}> ?derivation.
+    }}
+    """
+    query_result = kg_client.remote_store_client.executeQuery(query)
+
+    if query_result.isEmpty():
+        return None
+    elif query_result.length() == 1:
+        return query_result.getJSONObject(0).getString('result')
+    else:
+        raise Exception('Unexpected query result size ' +
+                        query_result.toString())
+
+
+def _instantiate_result(calculation_input: CalculationInput):
+    from agent.utils.kg_client import kg_client
+    result_iri = constants.PREFIX_EXPOSURE + 'result/' + str(uuid.uuid4())
+    derivation_iri = constants.PREFIX_DERIVATION + str(uuid.uuid4())
+    query = f"""
+    INSERT DATA{{
+        <{result_iri}> a <{constants.EXPOSURE_RESULT}>;
+            <{constants.BELONGS_TO}> <{derivation_iri}>.
+        <{derivation_iri}> a <{constants.DERIVATION}>;
+            <{constants.IS_DERIVED_FROM}> <{calculation_input.subject}>;
+            <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
+    }}
+    """
+    kg_client.remote_store_client.executeUpdate(query)
+    return result_iri

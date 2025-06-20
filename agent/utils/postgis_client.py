@@ -16,12 +16,5 @@ class PostGISClient:
     def connect(self):
         return psycopg2.connect(dbname=self.dbname, user=RDB_USER, password=RDB_PASSWORD, host=self.host, port=self.port)
 
-    def execute_query(self, conn, query, params=None):
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            if cur.description:
-                return cur.fetchall()
-            return None
-
 
 postgis_client = PostGISClient()

@@ -10,6 +10,7 @@ RASTER_GEOMETRY_COLUMN = 'rast'
 HAS_DISTANCE = PREFIX_EXPOSURE + 'hasDistance'
 HAS_UPPERBOUND = PREFIX_EXPOSURE + 'hasUpperbound'
 HAS_LOWERBOUND = PREFIX_EXPOSURE + 'hasLowerBound'
+HAS_VALUE = PREFIX_EXPOSURE + 'hasValue'
 DCTERM_TITLE = 'http://purl.org/dc/terms/title'
 DATASET_PREDICATE = PREFIX_DCAT + 'dataset'
 SERVES_DATASET = PREFIX_DCAT + 'servesDataset'
@@ -32,4 +33,7 @@ DERIVATION = PREFIX_DERIVATION + 'Derivation'
 POSTGIS_SERVICE = 'https://theworldavatar.io/kg/service#PostGIS'
 
 TRAJECTORY_COUNT = PREFIX_EXPOSURE + 'TrajectoryCount'
-CALCULATION_TYPES = [TRAJECTORY_COUNT]
+SIMPLE_COUNT = PREFIX_EXPOSURE + 'SimpleCount'
+CALCULATION_TYPES = [TRAJECTORY_COUNT, SIMPLE_COUNT]
+
+BIND_MOUNT_PATH = '/app/queries/'  # needs to match with stack manager config

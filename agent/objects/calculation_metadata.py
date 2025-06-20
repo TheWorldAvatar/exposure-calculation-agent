@@ -1,3 +1,5 @@
+import json
+from agent.utils import constants
 from agent.utils.constants import HAS_DISTANCE, HAS_LOWERBOUND, HAS_UPPERBOUND
 from dateutil.parser import parse
 
@@ -77,6 +79,43 @@ class CalculationMetadata():
                 'Unsupported format of lowerbound')
 
         return "\n".join(where_clauses)
+
+
+def get_calculation_metadata(iri: str) -> CalculationMetadata:
+    from agent.utils.kg_client import kg_client
+    query = f"""
+    SELECT ?rdf_type ?distance ?upperbound ?lowerbound
+    WHERE
+    {{
+        <{iri}> a ?rdf_type.
+        OPTIONAL{{<{iri}> <{constants.HAS_DISTANCE}> ?distance.}}
+        OPTIONAL{{<{iri}> <{constants.HAS_UPPERBOUND}> ?upperbound.}}
+        OPTIONAL{{<{iri}> <{constants.HAS_LOWERBOUND}> ?lowerbound.}}
+    }}
+    """
+
+    query_results = kg_client.remote_store_client.executeQuery(query)
+
+    # convert to python dict
+    if query_results.length() != 1:
+        raise Exception(
+            'Expected one set of results in get_calculation_metadata')
+
+    metadata = json.loads(query_results.getJSONObject(0).toString())
+    rdf_type = metadata['rdf_type']
+    distance = metadata['distance']
+
+    if 'upperbound' in metadata:
+        upperbound = metadata['upperbound']
+    else:
+        upperbound = None
+
+    if 'lowerbound' in metadata:
+        lowerbound = metadata['lowerbound']
+    else:
+        lowerbound = None
+
+    return CalculationMetadata(rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, iri=iri)
 
 
 def is_integer(s: str) -> bool:

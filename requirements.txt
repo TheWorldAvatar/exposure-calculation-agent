@@ -3,3 +3,4 @@ requests
 twa==0.0.8
 shapely
 psycopg2-binary
+rdflib
