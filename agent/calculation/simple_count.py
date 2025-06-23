@@ -35,6 +35,7 @@ def simple_count(calculation_input: CalculationInput):
                     query_result = cur.fetchall()
                     subject_to_result_dict[iri] = query_result[0][0]
 
+    logger.info('Instantiating results')
     _instantiate_result(subject_to_result_dict, calculation_input)
     return 'Calculation complete', 200
 
@@ -55,6 +56,7 @@ def _get_iri_to_point_dict(subject):
     logger.info(
         'Querying geometries of subjects, number of subjects: ' + str(len(subject)))
     if isinstance(subject, list):
+        # submitting results in chunks because querying more than 100k of geometries causes Ontop to crash
         for chunk in _chunk_list(subject):
             values = " ".join(f"<{s}>" for s in chunk)
             query = query_template.format(values=values)
@@ -175,6 +177,5 @@ def _instantiate_result(subject_to_value_dict: dict, calculation_input: Calculat
 
 
 def _chunk_list(values, chunk_size=10000):
-    # chunk_size determined randomly, having 100k of IRIs inside VALUES will cause ontop to crash
     for i in range(0, len(values), chunk_size):
         yield values[i:i + chunk_size]
