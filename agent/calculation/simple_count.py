@@ -11,7 +11,7 @@ logger = agentlogging.get_logger('dev')
 
 
 def simple_count(calculation_input: CalculationInput):
-    iri_to_point_dict = _get_iri_to_point_dict(calculation_input.subject)
+    iri_to_point_dict = get_iri_to_point_dict(calculation_input.subject)
     subject_to_result_dict = {}
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
@@ -36,11 +36,11 @@ def simple_count(calculation_input: CalculationInput):
                     subject_to_result_dict[iri] = query_result[0][0]
 
     logger.info('Instantiating results')
-    _instantiate_result(subject_to_result_dict, calculation_input)
+    instantiate_result(subject_to_result_dict, calculation_input)
     return 'Calculation complete', 200
 
 
-def _get_iri_to_point_dict(subject):
+def get_iri_to_point_dict(subject):
     from agent.utils.kg_client import kg_client
 
     iri_to_point_dict = {}
@@ -89,7 +89,7 @@ def _get_iri_to_point_dict(subject):
     return iri_to_point_dict
 
 
-def _instantiate_result(subject_to_value_dict: dict, calculation_input: CalculationInput):
+def instantiate_result(subject_to_value_dict: dict, calculation_input: CalculationInput):
     """
     Overwrites existing result if not already instantiated
     """
@@ -159,7 +159,8 @@ def _instantiate_result(subject_to_value_dict: dict, calculation_input: Calculat
             derivation_iri = constants.PREFIX_DERIVATION + str(uuid.uuid4())
 
             insert_triple = f"""
-            <{derivation_iri}> <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
+            <{derivation_iri}> a <{constants.DERIVATION}>;
+                <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
                 <{constants.IS_DERIVED_FROM}> <{subject}>;
                 <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
             <{result_iri}> a <{constants.EXPOSURE_RESULT}>;
@@ -170,7 +171,7 @@ def _instantiate_result(subject_to_value_dict: dict, calculation_input: Calculat
             insert_triples.append(insert_triple)
 
         insert_query = f"""
-        INSERT DATA {{{"\n".join(insert_triples)}}}
+        INSERT DATA {{{"".join(insert_triples)}}}
         """
 
         kg_client.remote_store_client.executeUpdate(insert_query)

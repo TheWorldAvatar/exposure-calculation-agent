@@ -1,25 +1,21 @@
-from flask import Blueprint, request, Response
-import requests
+from flask import Blueprint, request
 from twa import agentlogging
-from agent.calculation.api import CALCULATE_ROUTE
-from agent.interactor.initialise_calculation import initialise_calculation
-from agent.objects.calculation_metadata import CalculationMetadata
+from agent.interactor.trigger_calculation import get_dataset_iri
 import agent.utils.constants as constants
 from pathlib import Path
 from rdflib.plugins.sparql.parser import parseQuery
 from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL
+from agent.objects.calculation_metadata import CalculationMetadata
 
 logger = agentlogging.get_logger('dev')
 
-trigger_calculation_bp = Blueprint(
-    'trigger_calculation', __name__, url_prefix='/trigger_calculation')
+generate_results_bp = Blueprint(
+    'generate_results', __name__, url_prefix='/generate_results')
 
 
-@trigger_calculation_bp.route('/', methods=['POST'])
-def trigger_calculation():
+@generate_results_bp.route('/', methods=['GET'])
+def non_trajectory():
     from agent.utils.kg_client import kg_client
-    logger.info('Received request to trigger calculation')
-
     rdf_type = request.args.get('rdf_type')
     distance = request.args.get('distance')
 
@@ -65,32 +61,51 @@ def trigger_calculation():
     # get dataset iri to pass the core calculation agent
     exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
 
-    # this will initialise a calculation if it does not exist and return the instantiated iri, or return an existing iri
-    calculation_iri = initialise_calculation(CalculationMetadata(
-        rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound))
+    calculate_metadata = CalculationMetadata(
+        rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound)
 
-    logger.info('Calling core calculation agent')
+    var = 'var'
+    query_result = kg_client.remote_store_client.executeQuery(
+        calculate_metadata.get_query(var))
+    if query_result.length() != 1:
+        raise Exception(
+            'Queried size for calculation instances: ' + str(query_result.length()))
 
-    # call core calculation agent
-    agent_response = requests.post('http://localhost:5000' + CALCULATE_ROUTE, json={
-                                   "calculation": calculation_iri, "subject": subject if subject is not None else subject_list, "exposure": exposure_dataset_iri})
+    calculation_iri = query_result.getJSONObject(0).getString(var)
 
-    return Response(response=agent_response.content, status=agent_response.status_code, content_type=agent_response.headers.get('Content-Type'))
+    subject_to_result_dict = _get_subject_to_result_dict(
+        subject if subject is not None else subject_list, exposure=exposure_dataset_iri, calculation_iri=calculation_iri)
+
+    return ''
 
 
-def get_dataset_iri(table_name):
+@generate_results_bp.route('/trajectory', methods=['GET'])
+def trajectory():
+    return ''
+
+
+def _get_subject_to_result_dict(subject, exposure, calculation_iri):
     from agent.utils.kg_client import kg_client
-    var_name = 'dataset'
+    subject_to_result_dict = {}
+
+    values = " ".join(f"<{s}>" for s in subject)
     query = f"""
-    SELECT ?{var_name}
+    SELECT ?subject ?value
     WHERE {{
-        ?{var_name} a <{constants.DCAT_DATASET}>;
-            <{constants.DCTERM_TITLE}> "{table_name}".
+        VALUES ?subject {{{values}}}
+        ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
+            <{constants.IS_DERIVED_FROM}> <{exposure}>;
+            <{constants.IS_DERIVED_USING}> <{calculation_iri}>.
+        ?result <{constants.BELONGS_TO}> ?derivation;
+            <{constants.HAS_VALUE}> ?value
     }}
     """
-    query_results = kg_client.remote_store_client.executeQuery(query)
 
-    if query_results.length() != 1:
-        return None
-    else:
-        return query_results.getJSONObject(0).getString(var_name)
+    query_result = kg_client.remote_store_client.executeQuery(query)
+
+    for i in range(query_result.length()):
+        iri = query_result.getJSONObject(i).getString('subject')
+        result = query_result.getJSONObject(i).getDouble('value')
+        subject_to_result_dict[iri] = result
+
+    return subject_to_result_dict

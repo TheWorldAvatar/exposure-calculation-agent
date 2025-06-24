@@ -2,8 +2,6 @@ from agent.utils.baselib_gateway import baselib_view
 from agent.utils.stack_configs import BLAZEGRAPH_URL
 import agent.utils.constants as constants
 from twa import agentlogging
-import uuid
-from agent.calculation.calculation_input import CalculationInput
 
 logger = agentlogging.get_logger('dev')
 

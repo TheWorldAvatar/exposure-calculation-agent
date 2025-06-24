@@ -2,8 +2,9 @@ from flask import Blueprint, request
 from twa import agentlogging
 from agent.calculation.trajectory_count import trajectory_count
 from agent.calculation.simple_count import simple_count
+from agent.calculation.raster_sum import raster_sum
 from agent.objects.calculation_metadata import get_calculation_metadata
-from agent.utils.constants import TRAJECTORY_COUNT, SIMPLE_COUNT
+from agent.utils.constants import TRAJECTORY_COUNT, SIMPLE_COUNT, RASTER_SUM
 from agent.calculation.calculation_input import CalculationInput
 
 logger = agentlogging.get_logger('dev')
@@ -12,7 +13,8 @@ calculation_blueprint = Blueprint('calculation_blueprint', __name__)
 # map of RDF type of calculation to the function to call
 function_map = {
     TRAJECTORY_COUNT: trajectory_count,
-    SIMPLE_COUNT: simple_count
+    SIMPLE_COUNT: simple_count,
+    RASTER_SUM: raster_sum
 }
 
 CALCULATE_ROUTE = '/calculate_exposure'

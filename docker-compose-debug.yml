@@ -1,5 +1,5 @@
 services:
-  trip-agent:
+  exposure-calculation-agent:
     image: exposure-calculation-agent:1.0.0
     build:
       target: debug

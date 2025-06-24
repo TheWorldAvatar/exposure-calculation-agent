@@ -220,6 +220,7 @@ def _instantiate_result(calculation_input: CalculationInput):
             <{constants.BELONGS_TO}> <{derivation_iri}>.
         <{derivation_iri}> a <{constants.DERIVATION}>;
             <{constants.IS_DERIVED_FROM}> <{calculation_input.subject}>;
+            <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
             <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
     }}
     """
