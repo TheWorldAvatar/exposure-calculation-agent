@@ -1,5 +1,5 @@
 from agent.objects.calculation_metadata import CalculationMetadata
-from utils.constants import CALCULATION_TYPES
+from agent.utils.constants import CALCULATION_TYPES
 from twa import agentlogging
 import uuid
 import agent.utils.constants as constants
