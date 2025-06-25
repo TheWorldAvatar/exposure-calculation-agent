@@ -52,5 +52,5 @@ FROM base AS production
 # entry point setup
 #------------------------------------
 # Set the entrypoint
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "600", "agent.app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "600", "-w", "4", "--threads", "8", "agent.app:app"]
 #==================================================================================================
