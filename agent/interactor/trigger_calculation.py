@@ -32,14 +32,14 @@ def trigger_calculation():
     lowerbound = request.args.get('lowerbound')
 
     # query to obtain subject IRIs
-    query_file = request.args.get('query_file')
+    subject_query_file = request.args.get('subject_query_file')
 
-    if subject is not None and query_file is not None:
-        raise Exception('Provide subject or query_file, but not both')
+    if subject is not None and subject_query_file is not None:
+        raise Exception('Provide subject or subject_query_file, but not both')
 
     # do SPARQL query to obtain a list of subject IRIs
-    if query_file is not None:
-        with open(Path(constants.BIND_MOUNT_PATH)/query_file, "r") as f:
+    if subject_query_file is not None:
+        with open(Path(constants.BIND_MOUNT_PATH)/subject_query_file, "r") as f:
             query = f.read()
 
         parsed = parseQuery(query)
