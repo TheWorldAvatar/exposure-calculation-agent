@@ -31,6 +31,7 @@ def api():
     2) exposure (single IRI)
     3) calculation (single IRI)
     """
+    logger.info('Core calculation agent request received')
     request_json = request.get_json()
     calculation_iri = request_json['calculation']
     subject = request_json['subject']

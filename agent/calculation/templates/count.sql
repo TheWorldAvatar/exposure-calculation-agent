@@ -1,7 +1,7 @@
 SELECT COUNT(*) AS intersection_count
-FROM {TABLE_PLACEHOLDER}
+FROM {TEMP_TABLE}
 WHERE ST_DWithin(
-    ST_Transform({TABLE_PLACEHOLDER}.wkb_geometry, 3857),
-    ST_Transform(ST_GeomFromText(%(GEOMETRY_PLACEHOLDER)s, %(SRID_PLACEHOLDER)s), 3857),
+    {TEMP_TABLE}.wkb_geometry,
+    ST_GeomFromText(%(GEOMETRY_PLACEHOLDER)s, 3857),
     %(DISTANCE_PLACEHOLDER)s
 );

@@ -4,6 +4,8 @@ from agent.calculation.simple_count import get_iri_to_point_dict, instantiate_re
 from agent.utils.postgis_client import postgis_client
 from twa import agentlogging
 from psycopg2.extras import RealDictCursor
+from tqdm import tqdm
+import sys
 
 logger = agentlogging.get_logger('dev')
 
@@ -15,17 +17,26 @@ def raster_sum(calculation_input: CalculationInput):
     with open("agent/calculation/templates/raster_summary.sql", "r") as f:
         sql = f.read()
 
-    sql = sql.format(TABLE_PLACEHOLDER=exposure_dataset.table_name)
-
     subject_to_result_dict = {}
 
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            for iri, point in iri_to_point_dict.items():
+            temp_table = 'temp_table'
+
+            create_temp_sql = f"""
+            CREATE TEMP TABLE {temp_table} AS
+            SELECT ST_Transform(rast, 3857) AS rast
+            FROM {exposure_dataset.table_name}
+            """
+
+            cur.execute(create_temp_sql)
+
+            sql = sql.format(TEMP_TABLE=temp_table)
+
+            for iri, point in tqdm(iri_to_point_dict.items(), mininterval=60, ncols=80, file=sys.stdout):
                 replacements = {
-                    'SRID_PLACEHOLDER': 4326,
-                    'GEOMETRY_PLACEHOLDER': point,
+                    'GEOMETRY_PLACEHOLDER': point.wkt,
                     'DISTANCE_PLACEHOLDER': calculation_input.calculation_metadata.distance
                 }
                 cur.execute(sql, replacements)

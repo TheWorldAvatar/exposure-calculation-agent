@@ -6,6 +6,11 @@ from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL
 from twa import agentlogging
 import agent.utils.constants as constants
 import re
+from shapely import wkt
+from shapely.ops import transform
+from pyproj import Transformer
+from tqdm import tqdm
+import sys
 
 logger = agentlogging.get_logger('dev')
 
@@ -19,15 +24,25 @@ def simple_count(calculation_input: CalculationInput):
     with open("agent/calculation/templates/count.sql", "r") as f:
         sql = f.read()
 
-    sql = sql.format(TABLE_PLACEHOLDER=exposure_dataset.table_name)
-
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
         with conn.cursor() as cur:
-            for iri, point in iri_to_point_dict.items():
+            # create temp table
+            temp_table = 'temp_table'
+
+            create_temp_sql = f"""
+            CREATE TEMP TABLE {temp_table} AS
+            SELECT ST_Transform(wkb_geometry, 3857) AS wkb_geometry
+            FROM {exposure_dataset.table_name}
+            """
+
+            cur.execute(create_temp_sql)
+
+            sql = sql.format(TEMP_TABLE=temp_table)
+
+            for iri, point in tqdm(iri_to_point_dict.items(), mininterval=60, ncols=80, file=sys.stdout):
                 replacements = {
-                    'SRID_PLACEHOLDER': 4326,
-                    'GEOMETRY_PLACEHOLDER': point,
+                    'GEOMETRY_PLACEHOLDER': point.wkt,
                     'DISTANCE_PLACEHOLDER': calculation_input.calculation_metadata.distance
                 }
                 cur.execute(sql, replacements)
@@ -37,6 +52,8 @@ def simple_count(calculation_input: CalculationInput):
 
     logger.info('Instantiating results')
     instantiate_result(subject_to_result_dict, calculation_input)
+
+    logger.info('Completed instantiation')
     return 'Calculation complete', 200
 
 
@@ -44,6 +61,8 @@ def get_iri_to_point_dict(subject):
     from agent.utils.kg_client import kg_client
 
     iri_to_point_dict = {}
+    transformer = Transformer.from_crs(
+        "EPSG:4326", "EPSG:3857", always_xy=True)
 
     query_template = """
     SELECT ?subject ?wkt
@@ -71,10 +90,11 @@ def get_iri_to_point_dict(subject):
                 match = re.match(r'^"(.+)"\^\^<.+>$', wkt_literal)
                 if match:
                     wkt_str = match.group(1)
-                    iri_to_point_dict[sub] = wkt_str
+                    geom = wkt.loads(wkt_str)
+                    projected_geom = transform(transformer.transform, geom)
+                    iri_to_point_dict[sub] = projected_geom
                 else:
                     logger.error("Invalid WKT literal format: " + wkt_literal)
-
     else:
         values = f"<{subject}>"
         query = query_template.format(values=values)
@@ -83,8 +103,17 @@ def get_iri_to_point_dict(subject):
 
         for i in range(query_result.length()):
             sub = query_result.getJSONObject(i).getString('subject')
-            wkt = query_result.getJSONObject(i).getString('wkt')
-            iri_to_point_dict[sub] = wkt
+            wkt_literal = query_result.getJSONObject(i).getString('wkt')
+
+            # strip RDF literal IRI, i.e. ^^<http://www.opengis.net/ont/geosparql#wktLiteral>
+            match = re.match(r'^"(.+)"\^\^<.+>$', wkt_literal)
+            if match:
+                wkt_str = match.group(1)
+                geom = wkt.loads(wkt_str)
+                projected_geom = transform(transformer.transform, geom)
+                iri_to_point_dict[sub] = projected_geom
+            else:
+                logger.error("Invalid WKT literal format: " + wkt_literal)
 
     return iri_to_point_dict
 
