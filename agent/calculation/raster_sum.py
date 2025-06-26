@@ -1,6 +1,6 @@
 from agent.calculation.calculation_input import CalculationInput
+from agent.calculation.shared_utils import get_iri_to_point_dict, instantiate_result
 from agent.objects.exposure_dataset import get_exposure_dataset
-from agent.calculation.simple_count import get_iri_to_point_dict, instantiate_result
 from agent.utils.postgis_client import postgis_client
 from twa import agentlogging
 from psycopg2.extras import RealDictCursor
@@ -51,4 +51,5 @@ def raster_sum(calculation_input: CalculationInput):
     logger.info('Instantiating results')
     instantiate_result(subject_to_result_dict, calculation_input)
 
+    logger.info('Instantiated results')
     return 'Completed raster calculations'
