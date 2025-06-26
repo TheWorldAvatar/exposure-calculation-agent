@@ -8,6 +8,7 @@ from twa import agentlogging
 from agent.utils.baselib_gateway import baselib_view, jpsBaseLibGW
 from agent.utils.postgis_client import postgis_client
 from agent.objects.trip import Trip
+from pyproj import Transformer
 
 logger = agentlogging.get_logger('dev')
 
@@ -48,8 +49,13 @@ def trajectory_count(calculation_input: CalculationInput):
     postgis_point_list = trajectory_time_series.getValuesAsPoint(
         calculation_input.subject)
 
-    # list of python tuples
-    points = [(p.getX(), p.getY()) for p in postgis_point_list]
+    srid = postgis_point_list[0].getSrid()
+
+    # transform to EPSG 3857 to use metres later
+    transformer = Transformer.from_crs(
+        "EPSG:" + str(srid), "EPSG:3857", always_xy=True)
+    points = [transformer.transform(p.getX(), p.getY())
+              for p in postgis_point_list]
 
     logger.info('Processing trips')
     if trip_iri is not None:
@@ -65,21 +71,27 @@ def trajectory_count(calculation_input: CalculationInput):
     with open("agent/calculation/templates/count.sql", "r") as f:
         sql = f.read()
 
-    sql = sql.format(TABLE_PLACEHOLDER=exposure_dataset.table_name)
-
-    srid = postgis_point_list[0].getSrid()
-
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
         with conn.cursor() as cur:
-            for trip in trips:
-                line = trip.trajectory
+            # create temp table for efficiency
+            temp_table = 'temp_table'
 
+            create_temp_sql = f"""
+            CREATE TEMP TABLE {temp_table} AS
+            SELECT ST_Transform(wkb_geometry, 3857) AS wkb_geometry
+            FROM {exposure_dataset.table_name}
+            """
+
+            cur.execute(create_temp_sql)
+
+            sql = sql.format(TEMP_TABLE=temp_table)
+
+            for trip in trips:
                 # two types of replacement, table name via python, variables via psycopg2,
                 # supposed to be more secure against sql injection like this
                 replacements = {
-                    'SRID_PLACEHOLDER': str(srid),
-                    'GEOMETRY_PLACEHOLDER': line.wkt,
+                    'GEOMETRY_PLACEHOLDER': trip.trajectory.wkt,
                     'DISTANCE_PLACEHOLDER': calculation_input.calculation_metadata.distance
                 }
 

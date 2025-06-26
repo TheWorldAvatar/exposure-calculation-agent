@@ -27,7 +27,7 @@ def simple_count(calculation_input: CalculationInput):
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
         with conn.cursor() as cur:
-            # create temp table
+            # create temp table for efficiency
             temp_table = 'temp_table'
 
             create_temp_sql = f"""
@@ -74,30 +74,15 @@ def get_iri_to_point_dict(subject):
 
     logger.info(
         'Querying geometries of subjects, number of subjects: ' + str(len(subject)))
-    if isinstance(subject, list):
-        # submitting results in chunks because querying more than 100k of geometries causes Ontop to crash
-        for chunk in _chunk_list(subject):
-            values = " ".join(f"<{s}>" for s in chunk)
-            query = query_template.format(values=values)
-            query_result = kg_client.remote_store_client.executeFederatedQuery(
-                [BLAZEGRAPH_URL, ONTOP_URL], query)
 
-            for i in range(query_result.length()):
-                sub = query_result.getJSONObject(i).getString('subject')
-                wkt_literal = query_result.getJSONObject(i).getString('wkt')
-
-                # strip RDF literal IRI, i.e. ^^<http://www.opengis.net/ont/geosparql#wktLiteral>
-                match = re.match(r'^"(.+)"\^\^<.+>$', wkt_literal)
-                if match:
-                    wkt_str = match.group(1)
-                    geom = wkt.loads(wkt_str)
-                    projected_geom = transform(transformer.transform, geom)
-                    iri_to_point_dict[sub] = projected_geom
-                else:
-                    logger.error("Invalid WKT literal format: " + wkt_literal)
-    else:
-        values = f"<{subject}>"
+    query_list = []
+    # submit queries in batches to avoid crashing ontop
+    for chunk in _chunk_list(subject):
+        values = " ".join(f"<{s}>" for s in chunk)
         query = query_template.format(values=values)
+        query_list.append(query)
+
+    for query in query_list:
         query_result = kg_client.remote_store_client.executeFederatedQuery(
             [BLAZEGRAPH_URL, ONTOP_URL], query)
 
@@ -108,12 +93,12 @@ def get_iri_to_point_dict(subject):
             # strip RDF literal IRI, i.e. ^^<http://www.opengis.net/ont/geosparql#wktLiteral>
             match = re.match(r'^"(.+)"\^\^<.+>$', wkt_literal)
             if match:
-                wkt_str = match.group(1)
-                geom = wkt.loads(wkt_str)
-                projected_geom = transform(transformer.transform, geom)
-                iri_to_point_dict[sub] = projected_geom
+                geom = wkt.loads(match.group(1))
             else:
-                logger.error("Invalid WKT literal format: " + wkt_literal)
+                geom = wkt.loads(wkt_literal)
+
+            projected_geom = transform(transformer.transform, geom)
+            iri_to_point_dict[sub] = projected_geom
 
     return iri_to_point_dict
 
