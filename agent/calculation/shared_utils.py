@@ -17,87 +17,90 @@ def instantiate_result(subject_to_value_dict: dict, calculation_input: Calculati
     Overwrites existing result if not already instantiated
     """
     from agent.utils.kg_client import kg_client
-    # first check which instances already have a previous result instantiated
-    values1 = " ".join(f"<{s}>" for s in subject_to_value_dict.keys())
 
-    query = f"""
-    SELECT ?subject ?result
-    WHERE {{
-        VALUES ?subject {{{values1}}}
-        ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
-            <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
-            <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
-        ?result <{constants.BELONGS_TO}> ?derivation.
-    }}
-    """
+    for chunk in _chunk_list(list(subject_to_value_dict.keys())):
+        # first check which instances already have a previous result instantiated
+        values1 = " ".join(f"<{s}>" for s in chunk)
 
-    query_result = kg_client.remote_store_client.executeQuery(query)
-
-    subjects_with_existing_result = []
-    subject_to_result_dict = {}
-    for i in range(query_result.length()):
-        sub = query_result.getJSONObject(i).getString('subject')
-        result = query_result.getJSONObject(i).getString('result')
-        subjects_with_existing_result.append(sub)
-        subject_to_result_dict[sub] = result
-
-    subjects_without_existing_result = list(subject_to_value_dict.keys())
-    for s in subjects_with_existing_result:
-        subjects_without_existing_result.remove(s)
-
-    # overwrite existing result for instances with existing result
-    if len(subjects_with_existing_result) > 0:
-        values2 = " ".join(f"<{s}>" for s in subjects_with_existing_result)
-        insert_triples = "\n".join(
-            f"<{subject_to_result_dict[subject]}> <{constants.HAS_VALUE}> {subject_to_value_dict[subject]} ."
-            for subject in subjects_with_existing_result
-        )
-
-        update_query = f"""
-        DELETE
-        {{
-            ?result <{constants.HAS_VALUE}> ?value
-        }}
-        INSERT
-        {{
-            {insert_triples}
-        }}
-        WHERE
-        {{
-            VALUES ?subject {{{values2}}}
+        query = f"""
+        SELECT ?subject ?result
+        WHERE {{
+            VALUES ?subject {{{values1}}}
             ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
                 <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
                 <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
-            ?result <{constants.BELONGS_TO}> ?derivation;
-                <{constants.HAS_VALUE}> ?value.
+            ?result <{constants.BELONGS_TO}> ?derivation.
         }}
         """
-        kg_client.remote_store_client.executeUpdate(update_query)
 
-    if len(subjects_without_existing_result) > 0:
-        insert_triples = []
-        for subject in subjects_without_existing_result:
-            result_iri = constants.PREFIX_EXPOSURE + \
-                'result/' + str(uuid.uuid4())
-            derivation_iri = constants.PREFIX_DERIVATION + str(uuid.uuid4())
+        query_result = kg_client.remote_store_client.executeQuery(query)
 
-            insert_triple = f"""
-            <{derivation_iri}> a <{constants.DERIVATION}>;
-                <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
-                <{constants.IS_DERIVED_FROM}> <{subject}>;
-                <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
-            <{result_iri}> a <{constants.EXPOSURE_RESULT}>;
-                <{constants.BELONGS_TO}> <{derivation_iri}>;
-                <{constants.HAS_VALUE}> {subject_to_value_dict[subject]}.
+        subjects_with_existing_result = []
+        subject_to_result_dict = {}
+        for i in range(query_result.length()):
+            sub = query_result.getJSONObject(i).getString('subject')
+            result = query_result.getJSONObject(i).getString('result')
+            subjects_with_existing_result.append(sub)
+            subject_to_result_dict[sub] = result
+
+        subjects_without_existing_result = chunk
+        for s in subjects_with_existing_result:
+            subjects_without_existing_result.remove(s)
+
+        # overwrite existing result for instances with existing result
+        if len(subjects_with_existing_result) > 0:
+            values2 = " ".join(f"<{s}>" for s in subjects_with_existing_result)
+            insert_triples = "\n".join(
+                f"<{subject_to_result_dict[subject]}> <{constants.HAS_VALUE}> {subject_to_value_dict[subject]} ."
+                for subject in subjects_with_existing_result
+            )
+
+            update_query = f"""
+            DELETE
+            {{
+                ?result <{constants.HAS_VALUE}> ?value
+            }}
+            INSERT
+            {{
+                {insert_triples}
+            }}
+            WHERE
+            {{
+                VALUES ?subject {{{values2}}}
+                ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
+                    <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
+                    <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
+                ?result <{constants.BELONGS_TO}> ?derivation;
+                    <{constants.HAS_VALUE}> ?value.
+            }}
+            """
+            kg_client.remote_store_client.executeUpdate(update_query)
+
+        if len(subjects_without_existing_result) > 0:
+            insert_triples = []
+            for subject in subjects_without_existing_result:
+                result_iri = constants.PREFIX_EXPOSURE + \
+                    'result/' + str(uuid.uuid4())
+                derivation_iri = constants.PREFIX_DERIVATION + \
+                    str(uuid.uuid4())
+
+                insert_triple = f"""
+                <{derivation_iri}> a <{constants.DERIVATION}>;
+                    <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
+                    <{constants.IS_DERIVED_FROM}> <{subject}>;
+                    <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
+                <{result_iri}> a <{constants.EXPOSURE_RESULT}>;
+                    <{constants.BELONGS_TO}> <{derivation_iri}>;
+                    <{constants.HAS_VALUE}> {subject_to_value_dict[subject]}.
+                """
+
+                insert_triples.append(insert_triple)
+
+            insert_query = f"""
+            INSERT DATA {{{"".join(insert_triples)}}}
             """
 
-            insert_triples.append(insert_triple)
-
-        insert_query = f"""
-        INSERT DATA {{{"".join(insert_triples)}}}
-        """
-
-        kg_client.remote_store_client.executeUpdate(insert_query)
+            kg_client.remote_store_client.executeUpdate(insert_query)
 
 
 def get_iri_to_point_dict(subject):
