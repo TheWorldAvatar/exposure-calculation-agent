@@ -8,6 +8,8 @@ from pyproj import Transformer
 from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL
 from twa import agentlogging
 import re
+from tqdm import tqdm
+import sys
 
 logger = agentlogging.get_logger('dev')
 
@@ -18,7 +20,7 @@ def instantiate_result(subject_to_value_dict: dict, calculation_input: Calculati
     """
     from agent.utils.kg_client import kg_client
 
-    for chunk in _chunk_list(list(subject_to_value_dict.keys())):
+    for chunk in tqdm(_chunk_list(list(subject_to_value_dict.keys())), mininterval=60, ncols=80, file=sys.stdout):
         # first check which instances already have a previous result instantiated
         values1 = " ".join(f"<{s}>" for s in chunk)
 
