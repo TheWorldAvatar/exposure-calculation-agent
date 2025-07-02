@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, Response, request
 from twa import agentlogging
 from agent.interactor.trigger_calculation import get_dataset_iri
@@ -8,6 +9,7 @@ from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL
 from agent.objects.calculation_metadata import CalculationMetadata
 import csv
 import io
+from shapely import wkt
 
 logger = agentlogging.get_logger('dev')
 
@@ -43,7 +45,7 @@ def non_trajectory():
 
     # do SPARQL query to obtain a list of subject IRIs
     if subject_query_file is not None:
-        subject_list = _get_subjects(subject_query_file=subject_query_file)
+        subject = _get_subjects(subject_query_file=subject_query_file)
 
     # get dataset iri to pass the core calculation agent
     exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
@@ -63,16 +65,19 @@ def non_trajectory():
     # returns IRI to result
     logger.info('Querying results')
     subject_to_result_dict = _get_subject_to_result_dict(
-        subject if subject is not None else subject_list, exposure=exposure_dataset_iri, calculation_iri=calculation_iri)
+        subject=subject, exposure=exposure_dataset_iri, calculation_iri=calculation_iri)
 
     # returns IRI to label
     logger.info('Querying label')
     subject_to_label_dict = _get_subject_to_label_dict(
-        subject_label_query_file=subject_label_query_file, subjects=subject if subject is not None else subject_list)
+        subject_label_query_file=subject_label_query_file, subjects=subject)
+
+    logger.info('Getting subject coordinates')
+    subject_to_point_dict = _get_subject_to_point_dict(subject=subject)
 
     logger.info('Generating CSV file')
     csv = _create_csv(subject_to_label_dict=subject_to_label_dict,
-                      subject_to_result_dict=subject_to_result_dict)
+                      subject_to_result_dict=subject_to_result_dict, subject_to_point_dict=subject_to_point_dict)
 
     response = Response(csv.getvalue(), mimetype='text/csv')
     response.headers["Content-Disposition"] = "attachment; filename=data.csv"
@@ -177,14 +182,16 @@ def _insert_values_clause(sparql_query, varname, uris):
     return sparql_query[:brace_index + 1] + "\n  " + values_clause + "\n" + sparql_query[brace_index + 1:]
 
 
-def _create_csv(subject_to_result_dict, subject_to_label_dict):
+def _create_csv(subject_to_result_dict, subject_to_label_dict, subject_to_point_dict):
     data = []
 
     for subject in subject_to_result_dict.keys():
         label = subject_to_label_dict[subject]
         value = subject_to_result_dict[subject]
+        lat = subject_to_point_dict[subject].y
+        lng = subject_to_point_dict[subject].x
 
-        data.append({'label': label, 'value': value})
+        data.append({'label': label, 'value': value, 'lat': lat, 'lng': lng})
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=data[0].keys())
@@ -194,6 +201,52 @@ def _create_csv(subject_to_result_dict, subject_to_label_dict):
     return output
 
 
-def _chunk_list(values, chunk_size=10000):
+def _get_subject_to_point_dict(subject):
+    """
+    Identical to the one use by core agent but does not convert lat lon..
+    """
+    from agent.utils.kg_client import kg_client
+
+    iri_to_point_dict = {}
+
+    query_template = """
+    SELECT ?subject ?wkt
+    WHERE {{
+        VALUES ?subject {{{values}}}.
+        ?subject <http://www.opengis.net/ont/geosparql#asWKT> ?wkt.
+    }}
+    """
+
+    logger.info(
+        'Querying geometries of subjects, number of subjects: ' + str(len(subject)))
+
+    query_list = []
+    # submit queries in batches to avoid crashing ontop
+    for chunk in _chunk_list(subject):
+        values = " ".join(f"<{s}>" for s in chunk)
+        query = query_template.format(values=values)
+        query_list.append(query)
+
+    for query in query_list:
+        query_result = kg_client.remote_store_client.executeFederatedQuery(
+            [BLAZEGRAPH_URL, ONTOP_URL], query)
+
+        for i in range(query_result.length()):
+            sub = query_result.getJSONObject(i).getString('subject')
+            wkt_literal = query_result.getJSONObject(i).getString('wkt')
+
+            # strip RDF literal IRI, i.e. ^^<http://www.opengis.net/ont/geosparql#wktLiteral>
+            match = re.match(r'^"(.+)"\^\^<.+>$', wkt_literal)
+            if match:
+                geom = wkt.loads(match.group(1))
+            else:
+                geom = wkt.loads(wkt_literal)
+
+            iri_to_point_dict[sub] = geom
+
+    return iri_to_point_dict
+
+
+def _chunk_list(values, chunk_size=1000):
     for i in range(0, len(values), chunk_size):
         yield values[i:i + chunk_size]
