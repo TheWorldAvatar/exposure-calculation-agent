@@ -91,6 +91,6 @@ def get_dataset_iri(table_name):
     query_results = kg_client.remote_store_client.executeQuery(query)
 
     if query_results.length() != 1:
-        return None
+        raise Exception('Failed to get dataset IRI.')
     else:
         return query_results.getJSONObject(0).getString(var_name)

@@ -27,7 +27,11 @@ def raster_sum(calculation_input: CalculationInput):
             create_temp_sql = f"""
             CREATE TEMP TABLE {temp_table} AS
             SELECT ST_Transform(rast, 3857) AS rast
-            FROM {exposure_dataset.table_name}
+            FROM {exposure_dataset.table_name};
+
+            CREATE INDEX {temp_table}_rast_gix
+            ON {temp_table}
+            USING GIST (ST_ConvexHull(rast));
             """
 
             cur.execute(create_temp_sql)
@@ -35,6 +39,7 @@ def raster_sum(calculation_input: CalculationInput):
             sql = sql.format(TEMP_TABLE=temp_table)
 
             for iri, point in tqdm(iri_to_point_dict.items(), mininterval=60, ncols=80, file=sys.stdout):
+                subject_to_result_dict[iri] = 0
                 replacements = {
                     'GEOMETRY_PLACEHOLDER': point.wkt,
                     'DISTANCE_PLACEHOLDER': calculation_input.calculation_metadata.distance
@@ -42,11 +47,9 @@ def raster_sum(calculation_input: CalculationInput):
                 cur.execute(sql, replacements)
                 if cur.description:
                     query_result = cur.fetchall()
-                    if query_result[0]['count'] > 0:
-                        subject_to_result_dict[iri] = query_result[0]['sum']
-                    else:
-                        # does not intersect any pixels
-                        subject_to_result_dict[iri] = 0
+                    for row in query_result:
+                        if row['count'] > 0:
+                            subject_to_result_dict[iri] += row['sum']
 
     logger.info('Instantiating results')
     instantiate_result(subject_to_result_dict, calculation_input)

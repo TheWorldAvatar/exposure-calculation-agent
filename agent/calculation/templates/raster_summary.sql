@@ -7,7 +7,8 @@ WITH buffer_circle AS (
 clipped AS (
     SELECT ST_Clip(rast, buffer_circle.geom) AS rast
     FROM buffer_circle, {TEMP_TABLE}
-    WHERE ST_Intersects(rast, buffer_circle.geom)
+    WHERE rast && ST_Envelope(buffer_circle.geom)
+        AND ST_Intersects(rast, buffer_circle.geom)
 )
 
 SELECT (ST_SummaryStats(rast)).*
