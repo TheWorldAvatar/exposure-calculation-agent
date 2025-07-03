@@ -9,17 +9,17 @@ import sys
 logger = agentlogging.get_logger('dev')
 
 
-def simple_count(calculation_input: CalculationInput):
+def simple_area(calculation_input: CalculationInput):
     iri_to_point_dict = get_iri_to_point_dict(calculation_input.subject)
     subject_to_result_dict = {}
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
-    with open("agent/calculation/templates/count.sql", "r") as f:
-        count_sql = f.read()
-
     with open("agent/calculation/templates/temp_table_vector.sql", "r") as f:
         temp_table_sql = f.read()
+
+    with open("agent/calculation/templates/area.sql", "r") as f:
+        area_sql = f.read()
 
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
@@ -30,20 +30,21 @@ def simple_count(calculation_input: CalculationInput):
                 TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name)
             cur.execute(temp_table_sql)
 
-            count_sql = count_sql.format(TEMP_TABLE=temp_table)
-
+            area_sql = area_sql.format(TEMP_TABLE=temp_table)
             for iri, point in tqdm(iri_to_point_dict.items(), mininterval=60, ncols=80, file=sys.stdout):
                 replacements = {
                     'GEOMETRY_PLACEHOLDER': point.wkt,
                     'DISTANCE_PLACEHOLDER': calculation_input.calculation_metadata.distance
                 }
-                cur.execute(count_sql, replacements)
+                cur.execute(area_sql, replacements)
                 if cur.description:
                     query_result = cur.fetchall()
-                    subject_to_result_dict[iri] = query_result[0][0]
+                    if query_result[0][0] is None:
+                        subject_to_result_dict[iri] = 0
+                    else:
+                        subject_to_result_dict[iri] = query_result[0][0]
 
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)
 
-    logger.info('Completed instantiation')
-    return 'Calculation complete', 200
+    return 'Completed calculation for simple area'

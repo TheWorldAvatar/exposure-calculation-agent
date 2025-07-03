@@ -107,7 +107,7 @@ def _get_subject_to_result_dict(subject, exposure, calculation_iri):
         }}
         """
 
-        query_result = kg_client.remote_store_client.executeQuery(query)
+        query_result = kg_client.ontop_client.executeQuery(query)
 
         for i in range(query_result.length()):
             iri = query_result.getJSONObject(i).getString('subject')
@@ -194,7 +194,8 @@ def _create_csv(subject_to_result_dict, subject_to_label_dict, subject_to_point_
         data.append({'label': label, 'value': value, 'lat': lat, 'lng': lng})
 
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=data[0].keys())
+    writer = csv.DictWriter(
+        output, fieldnames=['label', 'value', 'lat', 'lng'])
     writer.writeheader()
     writer.writerows(data)
 

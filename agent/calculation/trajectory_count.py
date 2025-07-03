@@ -68,24 +68,22 @@ def trajectory_count(calculation_input: CalculationInput):
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
+    with open("agent/calculation/templates/temp_table_vector.sql", "r") as f:
+        temp_table_sql = f.read()
+
     with open("agent/calculation/templates/count.sql", "r") as f:
-        sql = f.read()
+        count_sql = f.read()
 
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
         with conn.cursor() as cur:
             # create temp table for efficiency
             temp_table = 'temp_table'
+            temp_table_sql = temp_table_sql.format(
+                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name)
+            cur.execute(temp_table_sql)
 
-            create_temp_sql = f"""
-            CREATE TEMP TABLE {temp_table} AS
-            SELECT ST_Transform(wkb_geometry, 3857) AS wkb_geometry
-            FROM {exposure_dataset.table_name}
-            """
-
-            cur.execute(create_temp_sql)
-
-            sql = sql.format(TEMP_TABLE=temp_table)
+            count_sql = count_sql.format(TEMP_TABLE=temp_table)
 
             for trip in trips:
                 # two types of replacement, table name via python, variables via psycopg2,
@@ -95,7 +93,7 @@ def trajectory_count(calculation_input: CalculationInput):
                     'DISTANCE_PLACEHOLDER': calculation_input.calculation_metadata.distance
                 }
 
-                cur.execute(sql, replacements)
+                cur.execute(count_sql, replacements)
                 if cur.description:
                     query_result = cur.fetchall()
                     trip.set_exposure_result(query_result[0][0])
