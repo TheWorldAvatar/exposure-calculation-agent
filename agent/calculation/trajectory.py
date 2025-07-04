@@ -221,7 +221,8 @@ def _get_exposure_result(calculation_input: CalculationInput):
         ?derivation <{constants.IS_DERIVED_FROM}> <{calculation_input.subject}>;
             <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
         ?result a <{constants.EXPOSURE_RESULT}>;
-            <{constants.BELONGS_TO}> ?derivation.
+            <{constants.BELONGS_TO}> ?derivation;
+            <{constants.HAS_TIME_SERIES}> ?time_series.
     }}
     """
     query_result = kg_client.remote_store_client.executeQuery(query)
