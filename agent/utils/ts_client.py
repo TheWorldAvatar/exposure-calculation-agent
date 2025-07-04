@@ -75,3 +75,8 @@ class TimeSeriesClient:
             self.tsclient.addColumnsToExistingTimeSeries(
                 time_series_iri, data_iri, class_list, None, conn)
         logger.info('Added new columns')
+
+    def delete_data(self, data_iri):
+        with self.connect() as conn:
+            self.tsclient.deleteIndividualTimeSeries(data_iri, conn)
+        logger.info('Deleted time series data')

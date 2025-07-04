@@ -8,11 +8,20 @@ import agent.utils.constants as constants
 from pathlib import Path
 from rdflib.plugins.sparql.parser import parseQuery
 from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL
+from agent.utils.ts_client import TimeSeriesClient
 
 logger = agentlogging.get_logger('dev')
 
 trigger_calculation_bp = Blueprint(
     'trigger_calculation', __name__, url_prefix='/trigger_calculation')
+
+
+@trigger_calculation_bp.route('/delete_time_series', methods=['DELETE'])
+def delete_time_series():
+    data_iri = request.args.get('data_iri')
+    ts_client = TimeSeriesClient(data_iri)
+    ts_client.delete_data(data_iri)
+    return 'Deleted data'
 
 
 @trigger_calculation_bp.route('/', methods=['POST'])
@@ -75,7 +84,10 @@ def trigger_calculation():
     agent_response = requests.post('http://localhost:5000' + CALCULATE_ROUTE, json={
                                    "calculation": calculation_iri, "subject": subject if subject is not None else subject_list, "exposure": exposure_dataset_iri})
 
-    return Response(response=agent_response.content, status=agent_response.status_code, content_type=agent_response.headers.get('Content-Type'))
+    consolidated_response = agent_response.text + \
+        '\n' + str(request.args.to_dict())
+
+    return Response(response=consolidated_response, status=agent_response.status_code, content_type=agent_response.headers.get('Content-Type'))
 
 
 def get_dataset_iri(table_name):
