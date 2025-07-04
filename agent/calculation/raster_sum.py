@@ -14,10 +14,10 @@ def raster_sum(calculation_input: CalculationInput):
     iri_to_point_dict = get_iri_to_point_dict(calculation_input.subject)
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
-    with open("agent/calculation/templates/raster_summary.sql", "r") as f:
+    with open("agent/calculation/resources/raster_summary.sql", "r") as f:
         raster_sql = f.read()
 
-    with open("agent/calculation/templates/temp_table_raster.sql", "r") as f:
+    with open("agent/calculation/resources/temp_table_raster.sql", "r") as f:
         temp_table_sql = f.read()
 
     subject_to_result_dict = {}

@@ -47,7 +47,7 @@ def instantiate_result_ontop(subject_to_value_dict: dict, calculation_input: Cal
                             calculation_input.calculation_metadata.iri, value))
 
             execute_values(cur, insert_query, data)
-    ontop_mapping_path = Path('agent/calculation/templates/ontop.obda')
+    ontop_mapping_path = Path('agent/calculation/resources/ontop.obda')
 
     path = stack_clients_view.java.nio.file.Paths.get(
         stack_clients_view.java.net.URI(ontop_mapping_path.resolve().as_uri()))

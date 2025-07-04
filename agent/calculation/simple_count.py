@@ -15,10 +15,10 @@ def simple_count(calculation_input: CalculationInput):
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
-    with open("agent/calculation/templates/count.sql", "r") as f:
+    with open("agent/calculation/resources/count.sql", "r") as f:
         count_sql = f.read()
 
-    with open("agent/calculation/templates/temp_table_vector.sql", "r") as f:
+    with open("agent/calculation/resources/temp_table_vector.sql", "r") as f:
         temp_table_sql = f.read()
 
     logger.info('Submitting SQL queries for calculations')

@@ -15,10 +15,10 @@ def simple_area(calculation_input: CalculationInput):
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
-    with open("agent/calculation/templates/temp_table_vector.sql", "r") as f:
+    with open("agent/calculation/resources/temp_table_vector.sql", "r") as f:
         temp_table_sql = f.read()
 
-    with open("agent/calculation/templates/area.sql", "r") as f:
+    with open("agent/calculation/resources/area.sql", "r") as f:
         area_sql = f.read()
 
     logger.info('Submitting SQL queries for calculations')
@@ -47,4 +47,5 @@ def simple_area(calculation_input: CalculationInput):
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)
 
+    logger.info('Completed instantiation')
     return 'Completed calculation for simple area'

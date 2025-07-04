@@ -64,14 +64,15 @@ def trajectory_count(calculation_input: CalculationInput):
             trajectory_time_series.getValuesAsInteger(trip_iri), points)
     else:
         # entire trajectory considered as a single trip
-        trips = [Trip(trajectory=LineString(points))]
+        trips = [Trip(trajectory=LineString(points), lower_index=0,
+                      upper_index=trajectory_time_series.getTimes().size() - 1)]
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
-    with open("agent/calculation/templates/temp_table_vector.sql", "r") as f:
+    with open("agent/calculation/resources/temp_table_vector.sql", "r") as f:
         temp_table_sql = f.read()
 
-    with open("agent/calculation/templates/count.sql", "r") as f:
+    with open("agent/calculation/resources/count.sql", "r") as f:
         count_sql = f.read()
 
     logger.info('Submitting SQL queries for calculations')
