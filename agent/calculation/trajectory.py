@@ -9,11 +9,22 @@ from agent.utils.baselib_gateway import baselib_view, jpsBaseLibGW
 from agent.utils.postgis_client import postgis_client
 from agent.objects.trip import Trip
 from pyproj import Transformer
+import agent.utils.constants as constants
 
 logger = agentlogging.get_logger('dev')
 
+rdf_type_to_sql_path = {
+    constants.TRAJECTORY_COUNT: "agent/calculation/resources/count.sql",
+    constants.TRAJECTORY_AREA: "agent/calculation/resources/area.sql"
+}
 
-def trajectory_count(calculation_input: CalculationInput):
+rdf_type_to_ts_class = {
+    constants.TRAJECTORY_COUNT: baselib_view.java.lang.Integer.TYPE,
+    constants.TRAJECTORY_AREA: baselib_view.java.lang.Double.TYPE,
+}
+
+
+def trajectory(calculation_input: CalculationInput):
     from agent.utils.kg_client import kg_client
     # subject must be a time series
     ts_client = TimeSeriesClient(calculation_input.subject)
@@ -72,8 +83,8 @@ def trajectory_count(calculation_input: CalculationInput):
     with open("agent/calculation/resources/temp_table_vector.sql", "r") as f:
         temp_table_sql = f.read()
 
-    with open("agent/calculation/resources/count.sql", "r") as f:
-        count_sql = f.read()
+    with open(rdf_type_to_sql_path[calculation_input.calculation_metadata.rdf_type], "r") as f:
+        calculation_sql = f.read()
 
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
@@ -84,7 +95,7 @@ def trajectory_count(calculation_input: CalculationInput):
                 TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name)
             cur.execute(temp_table_sql)
 
-            count_sql = count_sql.format(TEMP_TABLE=temp_table)
+            calculation_sql = calculation_sql.format(TEMP_TABLE=temp_table)
 
             for trip in trips:
                 # two types of replacement, table name via python, variables via psycopg2,
@@ -94,10 +105,13 @@ def trajectory_count(calculation_input: CalculationInput):
                     'DISTANCE_PLACEHOLDER': calculation_input.calculation_metadata.distance
                 }
 
-                cur.execute(count_sql, replacements)
+                cur.execute(calculation_sql, replacements)
                 if cur.description:
                     query_result = cur.fetchall()
-                    trip.set_exposure_result(query_result[0][0])
+                    if query_result[0][0] is None:
+                        trip.set_exposure_result(0)
+                    else:
+                        trip.set_exposure_result(query_result[0][0])
 
     # check if an existing result time series exists
     result_iri = _get_exposure_result(calculation_input)
@@ -106,8 +120,8 @@ def trajectory_count(calculation_input: CalculationInput):
     if result_iri is None:
         result_iri = _instantiate_result(calculation_input)
         time_series_iri = kg_client.get_time_series(calculation_input.subject)
-        ts_client.add_columns(time_series_iri=time_series_iri, data_iri=[
-                              result_iri], class_list=[baselib_view.java.lang.Integer.TYPE])
+        ts_client.add_columns(time_series_iri=time_series_iri, data_iri=[result_iri], class_list=[
+                              rdf_type_to_ts_class[calculation_input.calculation_metadata.rdf_type]])
 
     # create a Java time series object to upload to database
     result_time_series = _create_result_time_series(
