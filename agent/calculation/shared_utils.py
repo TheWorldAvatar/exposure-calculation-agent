@@ -1,15 +1,11 @@
 # functions that are shared between calculation types
 from agent.calculation.calculation_input import CalculationInput
-from agent.utils import constants
-import uuid
 from shapely import wkt
 from shapely.ops import transform
 from pyproj import Transformer
 from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL, ONTOP_CLIENT
 from twa import agentlogging
 import re
-from tqdm import tqdm
-import sys
 from agent.utils.postgis_client import postgis_client
 from psycopg2.extras import execute_values
 from agent.utils.stack_gateway import stack_clients_view
@@ -18,7 +14,7 @@ from pathlib import Path
 logger = agentlogging.get_logger('dev')
 
 
-def instantiate_result_ontop(subject_to_value_dict: dict, calculation_input: CalculationInput):
+def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_input: CalculationInput = None):
     with postgis_client.connect() as conn:
         with conn.cursor() as cur:
             create_table = """
@@ -35,16 +31,26 @@ def instantiate_result_ontop(subject_to_value_dict: dict, calculation_input: Cal
 
             data = []
 
-            insert_query = """
-                INSERT INTO exposure_result (subject, exposure, calculation, value)
-                VALUES %s
-                ON CONFLICT (subject, exposure, calculation)
-                DO UPDATE SET value = EXCLUDED.value
-            """
+            if subject_to_value_dict is not None:
+                insert_query = """
+                    INSERT INTO exposure_result (subject, exposure, calculation, value)
+                    VALUES %s
+                    ON CONFLICT (subject, exposure, calculation)
+                    DO UPDATE SET value = EXCLUDED.value
+                """
 
-            for subject, value in subject_to_value_dict.items():
-                data.append((subject, calculation_input.exposure,
-                            calculation_input.calculation_metadata.iri, value))
+                for subject, value in subject_to_value_dict.items():
+                    data.append((subject, calculation_input.exposure,
+                                calculation_input.calculation_metadata.iri, value))
+            else:
+                data = [(calculation_input.subject, calculation_input.exposure,
+                         calculation_input.calculation_metadata.iri)]
+
+                insert_query = """
+                    INSERT INTO exposure_result (subject, exposure, calculation)
+                    VALUES %s
+                    ON CONFLICT DO NOTHING
+                """
 
             execute_values(cur, insert_query, data)
     ontop_mapping_path = Path('agent/calculation/resources/ontop.obda')
@@ -52,97 +58,6 @@ def instantiate_result_ontop(subject_to_value_dict: dict, calculation_input: Cal
     path = stack_clients_view.java.nio.file.Paths.get(
         stack_clients_view.java.net.URI(ontop_mapping_path.resolve().as_uri()))
     ONTOP_CLIENT.updateOBDA(path)
-
-
-def instantiate_result(subject_to_value_dict: dict, calculation_input: CalculationInput):
-    """
-    Overwrites existing result if not already instantiated
-    """
-    from agent.utils.kg_client import kg_client
-
-    for chunk in tqdm(_chunk_list(list(subject_to_value_dict.keys())), mininterval=60, ncols=80, file=sys.stdout):
-        # first check which instances already have a previous result instantiated
-        values1 = " ".join(f"<{s}>" for s in chunk)
-
-        query = f"""
-        SELECT ?subject ?result
-        WHERE {{
-            VALUES ?subject {{{values1}}}
-            ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
-                <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
-                <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
-            ?result <{constants.BELONGS_TO}> ?derivation.
-        }}
-        """
-
-        query_result = kg_client.remote_store_client.executeQuery(query)
-
-        subjects_with_existing_result = []
-        subject_to_result_dict = {}
-        for i in range(query_result.length()):
-            sub = query_result.getJSONObject(i).getString('subject')
-            result = query_result.getJSONObject(i).getString('result')
-            subjects_with_existing_result.append(sub)
-            subject_to_result_dict[sub] = result
-
-        subjects_without_existing_result = chunk
-        for s in subjects_with_existing_result:
-            subjects_without_existing_result.remove(s)
-
-        # overwrite existing result for instances with existing result
-        if len(subjects_with_existing_result) > 0:
-            values2 = " ".join(f"<{s}>" for s in subjects_with_existing_result)
-            insert_triples = "\n".join(
-                f"<{subject_to_result_dict[subject]}> <{constants.HAS_VALUE}> {subject_to_value_dict[subject]} ."
-                for subject in subjects_with_existing_result
-            )
-
-            update_query = f"""
-            DELETE
-            {{
-                ?result <{constants.HAS_VALUE}> ?value
-            }}
-            INSERT
-            {{
-                {insert_triples}
-            }}
-            WHERE
-            {{
-                VALUES ?subject {{{values2}}}
-                ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
-                    <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
-                    <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
-                ?result <{constants.BELONGS_TO}> ?derivation;
-                    <{constants.HAS_VALUE}> ?value.
-            }}
-            """
-            kg_client.remote_store_client.executeUpdate(update_query)
-
-        if len(subjects_without_existing_result) > 0:
-            insert_triples = []
-            for subject in subjects_without_existing_result:
-                result_iri = constants.PREFIX_EXPOSURE + \
-                    'result/' + str(uuid.uuid4())
-                derivation_iri = constants.PREFIX_DERIVATION + \
-                    str(uuid.uuid4())
-
-                insert_triple = f"""
-                <{derivation_iri}> a <{constants.DERIVATION}>;
-                    <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
-                    <{constants.IS_DERIVED_FROM}> <{subject}>;
-                    <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
-                <{result_iri}> a <{constants.EXPOSURE_RESULT}>;
-                    <{constants.BELONGS_TO}> <{derivation_iri}>;
-                    <{constants.HAS_VALUE}> {subject_to_value_dict[subject]}.
-                """
-
-                insert_triples.append(insert_triple)
-
-            insert_query = f"""
-            INSERT DATA {{{"".join(insert_triples)}}}
-            """
-
-            kg_client.remote_store_client.executeUpdate(insert_query)
 
 
 def get_iri_to_point_dict(subject):

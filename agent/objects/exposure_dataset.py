@@ -21,7 +21,7 @@ def get_exposure_dataset(dataset_iri):
             <{constants.ENDPOINT_URL}> ?url.
     }}
     """
-    query_result = kg_client.remote_store_client.executeQuery(query)
+    query_result = kg_client.remote_store_client_kb.executeQuery(query)
     url = query_result.getJSONObject(0).getString('url')
     table_name = query_result.getJSONObject(0).getString('table_name')
 

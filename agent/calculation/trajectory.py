@@ -1,4 +1,5 @@
 import uuid
+from agent.calculation.shared_utils import instantiate_result_ontop
 from agent.objects.exposure_dataset import get_exposure_dataset
 from agent.utils import constants
 from agent.utils.ts_client import TimeSeriesClient
@@ -118,7 +119,11 @@ def trajectory(calculation_input: CalculationInput):
 
     # create a new column sharing the same time series with trajectory if it does not exist
     if result_iri is None:
-        result_iri = _instantiate_result(calculation_input)
+        instantiate_result_ontop(calculation_input=calculation_input)
+        result_iri = _get_exposure_result(calculation_input)
+
+    if kg_client.get_time_series(result_iri) is None:
+        # add a column that shares the same time series with trajectory
         time_series_iri = kg_client.get_time_series(calculation_input.subject)
         ts_client.add_columns(time_series_iri=time_series_iri, data_iri=[result_iri], class_list=[
                               rdf_type_to_ts_class[calculation_input.calculation_metadata.rdf_type]])
@@ -219,13 +224,13 @@ def _get_exposure_result(calculation_input: CalculationInput):
     SELECT ?result
     WHERE {{
         ?derivation <{constants.IS_DERIVED_FROM}> <{calculation_input.subject}>;
+            <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
             <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
         ?result a <{constants.EXPOSURE_RESULT}>;
-            <{constants.BELONGS_TO}> ?derivation;
-            <{constants.HAS_TIME_SERIES}> ?time_series.
+            <{constants.BELONGS_TO}> ?derivation.
     }}
     """
-    query_result = kg_client.remote_store_client.executeQuery(query)
+    query_result = kg_client.ontop_client.executeQuery(query)
 
     if query_result.isEmpty():
         return None
