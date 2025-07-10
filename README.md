@@ -1,11 +1,6 @@
 # Exposure calculation agent
 
-Calculates exposure of specified subjects to features in the environment
-
-Assumptions:
-
-1) Point time series table as SRID assigned
-2) Exposure datasets are uploaded using default GDAL settings with the stack data uploader.
+Calculates exposure of specified subjects to features in the environment.
 
 ## Environment variables
 
@@ -19,13 +14,14 @@ Exposure results are instantiated with the full IRIs in the table, this should n
 ## Core API
 
 Route to call the core function:
+
 POST /calculate_exposure with a JSON payload, payload to have the following keys:
 
-- subject [IRI(s) of subject]
-- exposure [IRI of exposure dataset, added by stack data uploader]
-- calculation [IRI of calculation instance]
+- subject: [IRI(s) of subject]
+- exposure: [IRI of exposure dataset, added by stack data uploader]
+- calculation: [IRI of calculation instance]
 
-If spun up using the given stack manager config in [./stack-manager/](./stack-manager/)
+Example curl request:
 
 ```bash
 curl -X POST http://localhost:3838/exposure-calculation-agent/calculate_exposure \
@@ -33,17 +29,29 @@ curl -X POST http://localhost:3838/exposure-calculation-agent/calculate_exposure
      -d '{"subject": "http://subject", "exposure": "http://exposure", "calculation": "http://calculation"}'
 ```
 
+Value of `"subject"` can be a list of IRIs (JSON array) if the subject is not a trajectory, e.g.
+
+```bash
+curl -X POST http://localhost:3838/exposure-calculation-agent/calculate_exposure \
+     -H "Content-Type: application/json" \
+     -d '{"subject": ["http://subject1", "http://subject2"], "exposure": "http://exposure", "calculation": "http://calculation"}'
+```
+
 ### Subject
 
-Broadly separated into subjects with a fixed geometry and trajectories.
+Agent considers two types of subject for exposure calculations: subject with a fixed geometry and subject with a trajectory.
 
-Subjects with a fixed geometry:
+#### Subject with fixed geometry
+
+Agent will query for the WKT literal in the following form:
 
 ```ttl
 <http://subject> geo:asWKT "POINT(1,2)"^^geo:wktLiteral
 ```
 
-Subjects with a trajectory, instantiated using the TimeSeriesClient:
+#### Subject with trajectory
+
+A PostGIS point time series instantiated using the TimeSeriesClient:
 
 ```ttl
 <http://subject> <https://www.theworldavatar.com/kg/ontotimeseries/hasTimeSeries> <http://timeseries>
@@ -51,11 +59,20 @@ Subjects with a trajectory, instantiated using the TimeSeriesClient:
 
 Time series data:
 
-| time    | points (displayed as WKB in database) |
-| --------| -------|
+| time    | points (WKB in database) |
+| --------| ------- |
 | 1 | POINT(1 2)    |
 | 2 | POINT(3 4)    |
 | 3 | POINT(5 6)    |
+
+A trajectory can be accompanied by trip data instantiated by the trip agent (<https://github.com/TheWorldAvatar/trip-agent>), the trip data shares the same time series as the subject of exposure:
+
+| Time |     Point     | Trip |
+|------|---------------|------|
+| 1    | POINT(1 2)    | 1    |
+| 2    | POINT(3 4)    | 1    |
+| 3    | POINT(5 6)    | 2    |
+| 4    | POINT(7 8)    | 2    |
 
 ### Exposure
 
@@ -66,48 +83,32 @@ Points to a table in PostGIS, assumed to be uploaded using the stack data upload
     dcterm:title 'table_name'.
 ```
 
-These are always in the `kb` namespace regardless of the `NAMESPACE` parameter because they are added by the stack data uploader.
+The dataset type (raster or vector) depends on the calculation type
 
-### Calculation
+### Instantiated results
 
-Supported calculation types:
+Results instantiated depend on the subject type (trajectory or fixed geometry).
 
-1. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`
-2. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`
-3. `<https://www.theworldavatar.com/kg/ontoexposure/SimpleCount>`
-4. `<https://www.theworldavatar.com/kg/ontoexposure/SimpleArea>`
+#### Results for subjects with fixed geometry
 
-Permissible metadata depends on the calculation type.
+Results are instantiated in the following form in Ontop:
 
-#### Trajectory count (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`)
+```ttl
+PREFIX derivation: <https://www.theworldavatar.com/kg/ontoderivation/>
+PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
 
-Counts features that are close to a given trajectory.
-
-Mandatory property:
-
-- distance
-
-optional properties for time series query, format of literal depends on the instantiated time series (e.g. Instant, epoch):
-
-- upperbound
-- lowerbound
-
-The instance of this calculation type:
-
-```sparql
-<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasUpperbound> 456;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasLowerbound> 123.
+<http://derivation> a derivation:Derivation;
+    derivation:isDerivedFrom <http://subject>;
+    derivation:isDerivedFrom <http://exposure>;
+    derivation:isDerivedUsing <http://calculation>.
+<http://result> a exposure:ExposureResult;
+    derivation:belongsTo <http://derivation>;
+    exposure:hasValue 123.
 ```
 
-Optional trip data instantiated by trip agent (<https://github.com/TheWorldAvatar/trip-agent>):
+#### Results for subjects with trajectory
 
-
-
-Instantiated results:
-
-Time series data and some triples will be added, a derivation instance is created for each subject - exposure - calculation pair, i.e.
+The result instance points to a column in a time series table and it shares the same time series with the trajectory
 
 ```ttl
 PREFIX derivation: <https://www.theworldavatar.com/kg/ontoderivation/>
@@ -121,25 +122,97 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
     derivation:belongsTo <http://derivation>.
 ```
 
-#### Simple count (`<https://www.theworldavatar.com/kg/ontoexposure/SimpleCount>`)
+If no trip data is present, the entire trajectory is considered as a single trip and a single value is calculated. If trip data is present, a value is calculated for each trip. A new column is added for each subject - exposure - calculation combination. Final results will look something like the following for data with trips. Note that the same value is repeated over each row within a trip.
 
-Counts features that are near specified geometries.
+| Time |     Point     | Trip | Result A | Result B |
+|------|---------------|------|----------|----------|
+| 1    | POINT(1 2)    | 1    | 1        | 2        |
+| 2    | POINT(3 4)    | 1    | 1        | 2        |
+| 3    | POINT(5 6)    | 2    | 3        | 4        |
+| 4    | POINT(7 8)    | 2    | 3        | 4        |
 
-Provided subject URL needs to have a WKT literal attached as a triple, i.e.
+If trip data is not present, entire trajectory is treated as a single trip:
 
-```ttl
-<subject> geo:asWKT "POINT(1,2)"^^geo:wktLiteral
-```
+| Time |     Point     | Result A | Result B |
+|------|---------------|----------|----------|
+| 1    | POINT(1 2)    | 1        | 4        |
+| 2    | POINT(3 4)    | 1        | 4        |
+| 3    | POINT(5 6)    | 1        | 4        |
+| 4    | POINT(5 6)    | 1        | 4        |
 
-Will federate across specified Blazegraph NAMESPACE and default Ontop SPARQL endpoint (the Ontop container without dataset name appended).
+### Calculation
+
+Supported calculation types:
+
+1. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`
+2. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`
+3. `<https://www.theworldavatar.com/kg/ontoexposure/SimpleCount>`
+4. `<https://www.theworldavatar.com/kg/ontoexposure/SimpleArea>`
+5. `<https://www.theworldavatar.com/kg/ontoexposure/RasterSum>`
+
+Permissible metadata depends on the calculation type. A result instance is instantiated for each subject - exposure - calculation combination.
+
+#### Trajectory count (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`)
+
+Overview: Counts features that are within a specified distance from the trajectory using ST_DWithin. [SQL query template here](./agent/calculation/resources/count.sql)
+
+Requirements for subject and exposure dataset:
+
+- Subject: contains a time series of points
+- Exposure: Any vector dataset uploaded via the stack data uploader
 
 The instance of this calculation type:
 
 ```sparql
 <http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasUpperbound> 456;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasLowerbound> 123.
+```
+
+Distance is mandatory, whereas upper and lower bounds are optional.
+
+#### Simple point count (`<https://www.theworldavatar.com/kg/ontoexposure/SimpleCount>`)
+
+Overview: Counts features that are near each subject using ST_DWithin. [SQL query template here](./agent/calculation/resources/count.sql)
+
+Requirements:
+Subject: Any fixed vector with a WKT literal associated via geo:asWKT.
+Exposure: Any vector dataset uploaded via the stack data uploader.
+
+The instance of this calculation type:
+
+```ttl
+<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/SimpleCount>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
 ```
 
 #### Trajectory area (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`)
 
-#### Simple area (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`)
+Overview: Calculates intersected area between the buffered trajectory and specified dataset. [SQL query template here](./agent/calculation/resources/area.sql)
+
+Requirements:
+Subject: Point time series
+Exposure: A polygon dataset
+
+```sparql
+<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasUpperbound> 456;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasLowerbound> 123.
+```
+
+Distance is mandatory, whereas upper and lower bounds are optional.
+
+#### Simple area (`<https://www.theworldavatar.com/kg/ontoexposure/SimpleArea>`)
+
+Overview: Calculates intersected area between a buffered point and polygons in a specified dataset. [SQL query template here](./agent/calculation/resources/area.sql)
+
+Requirements:
+Subject: Any fixed vector with a WKT literal associated via geo:asWKT, can be a list of IRI
+Exposure: A polygon dataset
+
+```ttl
+<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/SimpleArea>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
+```
