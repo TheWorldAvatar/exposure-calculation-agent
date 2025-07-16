@@ -1,4 +1,3 @@
-import uuid
 from agent.calculation.shared_utils import instantiate_result_ontop
 from agent.objects.exposure_dataset import get_exposure_dataset
 from agent.utils import constants
@@ -239,21 +238,3 @@ def _get_exposure_result(calculation_input: CalculationInput):
     else:
         raise Exception('Unexpected query result size ' +
                         query_result.toString())
-
-
-def _instantiate_result(calculation_input: CalculationInput):
-    from agent.utils.kg_client import kg_client
-    result_iri = constants.PREFIX_EXPOSURE + 'result/' + str(uuid.uuid4())
-    derivation_iri = constants.PREFIX_DERIVATION + str(uuid.uuid4())
-    query = f"""
-    INSERT DATA{{
-        <{result_iri}> a <{constants.EXPOSURE_RESULT}>;
-            <{constants.BELONGS_TO}> <{derivation_iri}>.
-        <{derivation_iri}> a <{constants.DERIVATION}>;
-            <{constants.IS_DERIVED_FROM}> <{calculation_input.subject}>;
-            <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
-            <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
-    }}
-    """
-    kg_client.remote_store_client.executeUpdate(query)
-    return result_iri
