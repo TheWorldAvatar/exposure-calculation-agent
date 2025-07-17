@@ -76,7 +76,14 @@ class TimeSeriesClient:
                 time_series_iri, data_iri, class_list, None, conn)
         logger.info('Added new columns')
 
-    def delete_data(self, data_iri):
+    def delete_data(self, data_list: list):
         with self.connect() as conn:
-            self.tsclient.deleteIndividualTimeSeries(data_iri, conn)
+            for data_iri in data_list:
+                self.tsclient.deleteIndividualTimeSeries(data_iri, conn)
         logger.info('Deleted time series data')
+
+    def init_time_series(self, data_iri: list, class_list: list):
+        with self.connect() as conn:
+            self.tsclient.bulkInitTimeSeries(
+                [data_iri], [class_list], [''], 4326, conn)
+        logger.info('Initialised time series data')
