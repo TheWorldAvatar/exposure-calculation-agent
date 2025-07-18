@@ -9,7 +9,7 @@ Calculates exposure of specified subjects to features in the environment.
 
 ## Note on Ontop usage
 
-Exposure results are instantiated with the full IRIs in the table, this should not be mixed with mappings that make use of <https://w3id.org/obda/vocabulary#isCanonicalIRIOf> (particularly the citydb dataset) which is known to cause issues.
+Exposure results are instantiated with the full IRIs in the table, this should not be mixed with mappings that make use of `<https://w3id.org/obda/vocabulary#isCanonicalIRIOf>` (particularly the citydb dataset) which is known to cause issues.
 
 ## Core API
 
