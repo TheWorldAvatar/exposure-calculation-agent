@@ -12,13 +12,19 @@ class TimeSeriesException(Exception):
 
 class TimeSeriesClient:
 
-    def __init__(self, point_iri):
+    def __init__(self, point_iri=None):
         try:
             remote_store_client = baselib_view.RemoteStoreClient(
                 BLAZEGRAPH_URL, BLAZEGRAPH_URL)
 
-            self.tsclient = baselib_view.TimeSeriesClientFactory.getInstance(
-                remote_store_client, [point_iri])
+            if point_iri is None:
+                ts_rdb_client = baselib_view.TimeSeriesRDBClientWithReducedTables(
+                    baselib_view.java.lang.Class.forName('java.lang.Long'))
+                self.tsclient = baselib_view.TimeSeriesClient(
+                    remote_store_client, ts_rdb_client)
+            else:
+                self.tsclient = baselib_view.TimeSeriesClientFactory.getInstance(
+                    remote_store_client, [point_iri])
 
             self.rdb_remote_client = baselib_view.RemoteRDBStoreClient(
                 RDB_URL, RDB_USER, RDB_PASSWORD)
