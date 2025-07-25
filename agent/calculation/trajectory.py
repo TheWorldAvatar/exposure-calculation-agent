@@ -8,14 +8,14 @@ from twa import agentlogging
 from agent.utils.baselib_gateway import baselib_view, jpsBaseLibGW
 from agent.utils.postgis_client import postgis_client
 from agent.objects.trip import Trip
-from pyproj import Transformer
+from pyproj import Transformer, CRS
 import agent.utils.constants as constants
 
 logger = agentlogging.get_logger('dev')
 
 rdf_type_to_sql_path = {
-    constants.TRAJECTORY_COUNT: "agent/calculation/resources/count.sql",
-    constants.TRAJECTORY_AREA: "agent/calculation/resources/area.sql"
+    constants.TRAJECTORY_COUNT: "agent/calculation/resources/count_trajectory.sql",
+    constants.TRAJECTORY_AREA: "agent/calculation/resources/area_trajectory.sql"
 }
 
 rdf_type_to_ts_class = {
@@ -60,11 +60,17 @@ def trajectory(calculation_input: CalculationInput):
     postgis_point_list = trajectory_time_series.getValuesAsPoint(
         calculation_input.subject)
 
+    points_original = [(p.getX(), p.getY()) for p in postgis_point_list]
+
+    # create temporary centroid for AEQD projection
+    centroid = LineString(points_original).envelope.centroid
+    proj4text = f"+proj=aeqd +lat_0={centroid.y} +lon_0={centroid.x} +units=m +datum=WGS84 +no_defs"
+
     srid = postgis_point_list[0].getSrid()
 
     # transform to EPSG 3857 to use metres later
     transformer = Transformer.from_crs(
-        "EPSG:" + str(srid), "EPSG:3857", always_xy=True)
+        "EPSG:" + str(srid), CRS.from_proj4(proj4text), always_xy=True)
     points = [transformer.transform(p.getX(), p.getY())
               for p in postgis_point_list]
 
@@ -80,7 +86,7 @@ def trajectory(calculation_input: CalculationInput):
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
-    with open("agent/calculation/resources/temp_table_vector.sql", "r") as f:
+    with open("agent/calculation/resources/temp_table_trajectory.sql", "r") as f:
         temp_table_sql = f.read()
 
     with open(rdf_type_to_sql_path[calculation_input.calculation_metadata.rdf_type], "r") as f:
@@ -92,7 +98,7 @@ def trajectory(calculation_input: CalculationInput):
             # create temp table for efficiency
             temp_table = 'temp_table'
             temp_table_sql = temp_table_sql.format(
-                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name)
+                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, PROJ4_TEXT=proj4text)
             cur.execute(temp_table_sql)
 
             calculation_sql = calculation_sql.format(TEMP_TABLE=temp_table)
