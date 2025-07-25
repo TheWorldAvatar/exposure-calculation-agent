@@ -3,6 +3,7 @@ from agent.calculation.calculation_input import CalculationInput
 from shapely import wkt
 from shapely.ops import transform
 from pyproj import Transformer
+from agent.utils import constants
 from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL, ONTOP_CLIENT
 from twa import agentlogging
 import re
@@ -31,7 +32,7 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
 
             data = []
 
-            if subject_to_value_dict is not None:
+            if calculation_input.calculation_metadata.rdf_type not in constants.TRAJECTORY_TYPES:
                 insert_query = """
                     INSERT INTO exposure_result (subject, exposure, calculation, value)
                     VALUES %s
@@ -43,6 +44,7 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
                     data.append((subject, calculation_input.exposure,
                                 calculation_input.calculation_metadata.iri, value))
             else:
+                # trajectory case, only one subject
                 data = [(calculation_input.subject, calculation_input.exposure,
                          calculation_input.calculation_metadata.iri)]
 
@@ -53,11 +55,36 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
                 """
 
             execute_values(cur, insert_query, data)
-    ontop_mapping_path = Path('agent/calculation/resources/ontop.obda')
 
-    path = stack_clients_view.java.nio.file.Paths.get(
-        stack_clients_view.java.net.URI(ontop_mapping_path.resolve().as_uri()))
-    ONTOP_CLIENT.updateOBDA(path)
+    # upload mapping only if it has not been uploaded
+    _upload_ontop_mapping(calculation_input=calculation_input)
+
+
+def _upload_ontop_mapping(calculation_input: CalculationInput):
+    from agent.utils.kg_client import kg_client
+
+    # just picking a random subject to check
+    if isinstance(calculation_input.subject, list):
+        subject_to_check = calculation_input.subject[0]
+    else:
+        subject_to_check = calculation_input.subject
+
+    query = f"""
+    SELECT ?derivation
+    WHERE {{
+        ?derivation <{constants.IS_DERIVED_FROM}> <{subject_to_check}>;
+            <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>;
+            <{constants.IS_DERIVED_USING}> <{calculation_input.calculation_metadata.iri}>.
+    }}
+    """
+    query_result = kg_client.ontop_client.executeQuery(query)
+
+    if query_result.isEmpty():
+        ontop_mapping_path = Path('agent/calculation/resources/ontop.obda')
+
+        path = stack_clients_view.java.nio.file.Paths.get(
+            stack_clients_view.java.net.URI(ontop_mapping_path.resolve().as_uri()))
+        ONTOP_CLIENT.updateOBDA(path)
 
 
 def get_iri_to_point_dict(subject):
