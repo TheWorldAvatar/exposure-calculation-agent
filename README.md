@@ -152,6 +152,8 @@ Supported calculation types:
 
 Permissible metadata depends on the calculation type. A result instance is instantiated for each subject - exposure - calculation combination.
 
+The choice of projection affects the results greatly. For trajectory based calculations, azimuthal equidistant projection (AEQD) is used, the centroid calculated from the trajectory's envelope. For calculations involving fixed points, EPSG:3857 is used to keep things simple, in case there are points that are far from each other as the AEQD projection relies on a centroid.
+
 #### Trajectory count (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`)
 
 Overview: Counts features that are within a specified distance from the trajectory using ST_DWithin. [SQL query template here](./agent/calculation/resources/count.sql)
