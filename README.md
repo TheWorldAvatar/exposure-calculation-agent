@@ -174,7 +174,7 @@ The instance of this calculation type:
 
 Distance is mandatory, whereas upper and lower bounds are optional.
 
-#### Simple point count (`<https://www.theworldavatar.com/kg/ontoexposure/SimpleCount>`)
+#### Count (`<https://www.theworldavatar.com/kg/ontoexposure/Count>`)
 
 Overview: Counts features that are near each subject using ST_DWithin. [SQL query template here](./agent/calculation/resources/count.sql)
 
@@ -206,7 +206,7 @@ Exposure: A polygon dataset
 
 Distance is mandatory, whereas upper and lower bounds are optional.
 
-#### Simple area (`<https://www.theworldavatar.com/kg/ontoexposure/SimpleArea>`)
+#### Area (`<https://www.theworldavatar.com/kg/ontoexposure/Area>`)
 
 Overview: Calculates intersected area between a buffered point and polygons in a specified dataset. [SQL query template here](./agent/calculation/resources/area.sql)
 
