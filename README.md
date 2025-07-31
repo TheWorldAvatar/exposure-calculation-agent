@@ -146,8 +146,8 @@ Supported calculation types:
 
 1. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`
 2. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`
-3. `<https://www.theworldavatar.com/kg/ontoexposure/SimpleCount>`
-4. `<https://www.theworldavatar.com/kg/ontoexposure/SimpleArea>`
+3. `<https://www.theworldavatar.com/kg/ontoexposure/Count>`
+4. `<https://www.theworldavatar.com/kg/ontoexposure/Area>`
 5. `<https://www.theworldavatar.com/kg/ontoexposure/RasterSum>`
 
 Permissible metadata depends on the calculation type. A result instance is instantiated for each subject - exposure - calculation combination.
