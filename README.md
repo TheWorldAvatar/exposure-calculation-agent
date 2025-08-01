@@ -152,11 +152,11 @@ Supported calculation types:
 
 Permissible metadata depends on the calculation type. A result instance is instantiated for each subject - exposure - calculation combination.
 
-The choice of projection affects the results greatly. For trajectory based calculations, azimuthal equidistant projection (AEQD) is used, the centroid calculated from the trajectory's envelope. For calculations involving fixed points, EPSG:3857 is used to keep things simple, in case there are points that are far from each other as the AEQD projection relies on a centroid.
+The choice of projection affects the results greatly. For trajectory based calculations, azimuthal equidistant projection (AEQD) is used, the centroid is calculated from the trajectory's envelope. For calculations involving fixed points, EPSG:3857 is used to keep things simple, in case there are points that are far from each other as the AEQD projection relies on a centroid.
 
 #### Trajectory count (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`)
 
-Overview: Counts features that are within a specified distance from the trajectory using ST_DWithin. [SQL query template here](./agent/calculation/resources/count.sql)
+Overview: Counts features that are within a specified distance from the trajectory using ST_DWithin. [SQL query template here](./agent/calculation/resources/count_trajectory.sql)
 
 Requirements for subject and exposure dataset:
 
@@ -185,13 +185,13 @@ Exposure: Any vector dataset uploaded via the stack data uploader.
 The instance of this calculation type:
 
 ```ttl
-<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/SimpleCount>;
+<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/Count>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
 ```
 
 #### Trajectory area (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`)
 
-Overview: Calculates intersected area between the buffered trajectory and specified dataset. [SQL query template here](./agent/calculation/resources/area.sql)
+Overview: Calculates intersected area between the buffered trajectory and specified dataset. [SQL query template here](./agent/calculation/resources/area_trajectory.sql)
 
 Requirements:
 Subject: Point time series
@@ -215,6 +215,6 @@ Subject: Any fixed vector with a WKT literal associated via geo:asWKT, can be a 
 Exposure: A polygon dataset
 
 ```ttl
-<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/SimpleArea>;
+<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/Area>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
 ```
