@@ -20,7 +20,6 @@ generate_results_bp = Blueprint(
 
 @generate_results_bp.route('/', methods=['GET'])
 def non_trajectory():
-    from agent.utils.kg_client import kg_client
     # IRI(s) of subject to calculate
     subject = request.args.get('subject')
     exposure_table = request.args.get('exposure_table')
