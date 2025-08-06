@@ -13,6 +13,11 @@
                         "Type": "volume",
                         "Source": "exposure-calculation-agent",
                         "Target": "/app/queries"
+                    },
+                    {
+                        "Type": "volume",
+                        "Source": "logs",
+                        "Target": "/root/.twa"
                     }
                 ],
                 "Configs": [
