@@ -12,6 +12,8 @@ from shapely import wkt
 from collections import defaultdict
 import json
 
+from agent.utils.ts_client import TimeSeriesClient
+
 logger = agentlogging.get_logger('dev')
 
 generate_results_bp = Blueprint(
@@ -40,7 +42,7 @@ def non_trajectory():
     if subject_query_file is not None:
         subject = _get_subjects(subject_query_file=subject_query_file)
 
-    # get dataset iri to pass the core calculation agent
+    # get dataset iri
     exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
 
     # returns IRI to result
@@ -67,16 +69,18 @@ def non_trajectory():
 
 @generate_results_bp.route('/trajectory', methods=['GET'])
 def trajectory():
-    from agent.utils.kg_client import kg_client
+    logger.info('Received request to generate CSV file for trajectory')
     # rdf type of calculation type
     rdf_type = request.args.get('rdf_type')
-
-    # metadata for calculation instance
-    distance = request.args.get('distance')
 
     # IRI(s) of subject to calculate
     subject = request.args.get('subject')
     exposure_table = request.args.get('exposure_table')
+
+    # get dataset iri
+    exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
+
+    trip_iri = _get_trip(subject)
 
     # for trajectory time series
     upperbound = request.args.get('upperbound')
@@ -89,7 +93,59 @@ def trajectory():
     if lowerbound is not None:
         lowerbound = int(lowerbound)
 
-    return ''
+    logger.info('Querying results')
+    distance_to_result_dict = _get_distance_to_result_dict(
+        subject=subject, exposure=exposure_dataset_iri, calculation_type=rdf_type)
+
+    data_iri_list = [subject] + list(distance_to_result_dict.values())
+    if trip_iri is not None:
+        data_iri_list.append(trip_iri)
+
+    ts_client = TimeSeriesClient(subject)
+
+    time_series = ts_client.get_time_series(
+        data_iri_list=data_iri_list, lowerbound=lowerbound, upperbound=upperbound)
+
+    postgis_points = time_series.getValuesAsPoint(subject)
+
+    lat_list = []
+    lng_list = []
+
+    for point in postgis_points:
+        lat_list.append(point.getY())
+        lng_list.append(point.getX())
+
+    java_time_list = time_series.getTimes()
+    time_list = [java_time_list.get(i) for i in range(java_time_list.size())]
+
+    data_to_write = [time_list, lat_list, lng_list]
+    headers = ['time', 'lat', 'lng']
+
+    if trip_iri is not None:
+        java_trip_list = time_series.getValuesAsInteger(trip_iri)
+        trip_list = [java_trip_list.get(i)
+                     for i in range(java_trip_list.size())]
+        data_to_write.append(trip_list)
+        headers.append('trip index')
+
+    for distance, result in distance_to_result_dict.items():
+        java_result_list = time_series.getValuesAsDouble(result)
+        result_list = [java_result_list.get(i)
+                       for i in range(java_result_list.size())]
+        data_to_write.append(result_list)
+        headers.append(str(distance))
+
+    rows = zip(*data_to_write)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    writer.writerows(rows)
+
+    response = Response(output.getvalue(), mimetype='text/csv')
+    response.headers["Content-Disposition"] = "attachment; filename=data.csv"
+
+    return response
 
 
 def _get_subject_to_result_dict(subject, exposure, calculation_type):
@@ -123,6 +179,32 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
             subject_to_result_dict[iri][distance] = item['value']
 
     return subject_to_result_dict
+
+
+def _get_distance_to_result_dict(subject, exposure, calculation_type):
+    from agent.utils.kg_client import kg_client
+    distance_to_result_dict = {}
+
+    query = f"""
+    SELECT ?result ?distance
+    WHERE {{
+        ?calculation a <{calculation_type}>;
+            <{constants.HAS_DISTANCE}> ?distance.
+        SERVICE <{ONTOP_URL}> {{
+            ?derivation <{constants.IS_DERIVED_FROM}> <{subject}>;
+                <{constants.IS_DERIVED_FROM}> <{exposure}>;
+                <{constants.IS_DERIVED_USING}> ?calculation.
+            ?result <{constants.BELONGS_TO}> ?derivation.
+        }}
+    }}
+    """
+
+    query_result = json.loads(
+        kg_client.remote_store_client.executeQuery(query).toString())
+    for row in query_result:
+        distance_to_result_dict[row['distance']] = row['result']
+
+    return distance_to_result_dict
 
 
 def _get_select_var(sparql_query):
@@ -178,7 +260,7 @@ def _get_subject_to_label_dict(subject_label_query_file, subjects):
 
 
 def _insert_values_clause(sparql_query, varname, uris):
-    """ 
+    """
     inserts "VALUES ?Feature {..}" right after "WHERE {"
     """
     values = " ".join(f"<{uri}>" for uri in uris)
@@ -224,7 +306,7 @@ def _get_subject_to_point_dict(subject):
     SELECT ?subject ?wkt
     WHERE {{
         VALUES ?subject {{{values}}}.
-        ?subject <http://www.opengis.net/ont/geosparql#asWKT> ?wkt.
+        ?subject < http: // www.opengis.net/ont/geosparql  # asWKT> ?wkt.
     }}
     """
 
@@ -255,6 +337,26 @@ def _get_subject_to_point_dict(subject):
             iri_to_point_dict[sub] = geom
 
     return iri_to_point_dict
+
+
+def _get_trip(point_iri: str):
+    from agent.utils.kg_client import kg_client
+    query = f"""
+    SELECT ?trip
+    WHERE {{
+        <{point_iri}> <{constants.HAS_TIME_SERIES}> ?time_series.
+        ?trip <{constants.HAS_TIME_SERIES}> ?time_series;
+            a <{constants.TRIP}> .
+    }}
+    """
+    query_results = kg_client.remote_store_client.executeQuery(query)
+
+    if query_results.isEmpty():
+        return None
+    elif query_results.length() > 1:
+        raise Exception('More than 1 trip instance detected?')
+    else:
+        return query_results.getJSONObject(0).getString('trip')
 
 
 def _chunk_list(values, chunk_size=1000):
