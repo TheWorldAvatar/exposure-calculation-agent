@@ -16,11 +16,11 @@ from agent.utils.ts_client import TimeSeriesClient
 
 logger = agentlogging.get_logger('dev')
 
-generate_results_bp = Blueprint(
-    'generate_results', __name__, url_prefix='/generate_results')
+csv_export_bp = Blueprint(
+    'csv_export', __name__, url_prefix='/csv_export')
 
 
-@generate_results_bp.route('/', methods=['GET'])
+@csv_export_bp.route('/', methods=['GET'])
 def non_trajectory():
     # IRI(s) of subject to calculate
     subject = request.args.get('subject')
@@ -67,7 +67,7 @@ def non_trajectory():
     return response
 
 
-@generate_results_bp.route('/trajectory', methods=['GET'])
+@csv_export_bp.route('/trajectory', methods=['GET'])
 def trajectory():
     logger.info('Received request to generate CSV file for trajectory')
     # rdf type of calculation type
