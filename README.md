@@ -95,9 +95,9 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
 
 <http://derivation> a derivation:Derivation;
     derivation:isDerivedFrom <http://subject>;
-    derivation:isDerivedFrom <http://exposure>;
-    derivation:isDerivedUsing <http://calculation>.
+    derivation:isDerivedFrom <http://exposure>.
 <http://result> a exposure:ExposureResult;
+    exposure:hasCalculationMethod <http://calculation>;
     derivation:belongsTo <http://derivation>;
     exposure:hasValue 123.
 ```
@@ -112,9 +112,9 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
 
 <http://derivation> a derivation:Derivation;
     derivation:isDerivedFrom <http://subject>;
-    derivation:isDerivedFrom <http://exposure>;
-    derivation:isDerivedUsing <http://calculation>.
+    derivation:isDerivedFrom <http://exposure>.
 <http://result> a exposure:ExposureResult;
+    exposure:hasCalculationMethod <http://calculation>;
     derivation:belongsTo <http://derivation>.
 ```
 

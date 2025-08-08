@@ -161,10 +161,10 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
                 <{constants.HAS_DISTANCE}> ?distance.
             SERVICE <{ONTOP_URL}> {{VALUES ?subject {{{values}}}
                 ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
-                    <{constants.IS_DERIVED_FROM}> <{exposure}>;
-                    <{constants.IS_DERIVED_USING}> ?calculation.
+                    <{constants.IS_DERIVED_FROM}> <{exposure}>.
                 ?result <{constants.BELONGS_TO}> ?derivation;
-                    <{constants.HAS_VALUE}> ?value
+                    <{constants.HAS_VALUE}> ?value;
+                    <{constants.HAS_CALCULATION_METHOD}> ?calcualtion.
             }}
         }}
         """
@@ -192,9 +192,9 @@ def _get_distance_to_result_dict(subject, exposure, calculation_type):
             <{constants.HAS_DISTANCE}> ?distance.
         SERVICE <{ONTOP_URL}> {{
             ?derivation <{constants.IS_DERIVED_FROM}> <{subject}>;
-                <{constants.IS_DERIVED_FROM}> <{exposure}>;
-                <{constants.IS_DERIVED_USING}> ?calculation.
-            ?result <{constants.BELONGS_TO}> ?derivation.
+                <{constants.IS_DERIVED_FROM}> <{exposure}>.
+            ?result <{constants.BELONGS_TO}> ?derivation;
+                <{constants.HAS_CALCULATION_METHOD}> ?calculation.
         }}
     }}
     """
@@ -306,7 +306,7 @@ def _get_subject_to_point_dict(subject):
     SELECT ?subject ?wkt
     WHERE {{
         VALUES ?subject {{{values}}}.
-        ?subject < http: // www.opengis.net/ont/geosparql  # asWKT> ?wkt.
+        ?subject <http://www.opengis.net/ont/geosparql#asWKT> ?wkt.
     }}
     """
 

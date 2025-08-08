@@ -15,9 +15,9 @@ DCTERM_TITLE = 'http://purl.org/dc/terms/title'
 DATASET_PREDICATE = PREFIX_DCAT + 'dataset'
 SERVES_DATASET = PREFIX_DCAT + 'servesDataset'
 ENDPOINT_URL = PREFIX_DCAT + 'endpointURL'
-IS_DERIVED_USING = PREFIX_DERIVATION + 'isDerivedUsing'
 IS_DERIVED_FROM = PREFIX_DERIVATION + 'isDerivedFrom'
 BELONGS_TO = PREFIX_DERIVATION + 'belongsTo'
+HAS_CALCULATION_METHOD = PREFIX_EXPOSURE + 'hasCalculationMethod'
 
 # time series related
 TIMESERIES_NAMESPACE = 'https://www.theworldavatar.com/kg/ontotimeseries/'
