@@ -7,10 +7,6 @@ Calculates exposure of specified subjects to features in the environment.
 1) NAMESPACE (namespace of blazegraph, defaults to kb)
 2) DATABASE (database name of postgres, defaults to postgres)
 
-## Note on Ontop usage
-
-Exposure results are instantiated with the full IRIs in the table, this should not be mixed with mappings that make use of `<https://w3id.org/obda/vocabulary#isCanonicalIRIOf>` (particularly the citydb dataset) which is known to cause issues.
-
 ## Core API
 
 Route to call the core function:
@@ -218,3 +214,67 @@ Exposure: A polygon dataset
 <http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/Area>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
 ```
+
+## User facing APIs
+
+These APIs are not part of the core calculation agent and they are located in [agent\interactor](agent\interactor).
+
+The following APIs are used to initialise the necessary instances and trigger the core agent.
+
+1) /trigger_calculation/ (POST)
+
+    Parameters:
+    - subject_query_file: SPARQL query template to obtain subject IRIs, bind mounted in the folder called `/app/queries`. The result of this query should give IRI(s) of subject that we wish to calculate for. The query must have one SELECT parameter and can take any name.
+    - subject: IRI of subject to calculate for
+    - rdf_type: RDF type of calculation to perform
+    - distance: buffer distance for calculation
+    - exposure_table: table name of exposure dataset (needs to be added via the stack data uploader to ensure the necessary triples are present)
+    - upperbound (optional): optional upperbound for trajectory calculations
+    - lowerbound (optional): optional lowerbound for trajectory calculations
+
+    Either `subject_query_file` or `subject` needs to be provided in the request.
+    Example usage:
+
+    ```bash
+    curl -X POST http://localhost:3838/exposure-calculation-agent/trigger_calculation/?subject_query_file=subject_query.sparql&rdf_type=https://www.theworldavatar.com/kg/ontoexposure/Count&distance=400&exposure_table=parks
+    ```
+
+    Overview:
+    1) This route checks whether a calculation instance with the specified RDF type and metadata (e.g. distance) exists, then instantiate one if necessary. 
+    2) If `subject_query_file` is given, it will run the query to obtain the subject IRIs, otherwise IRI is simply obtained from the `subject` parameter.
+    3) Then it queries the dataset IRI of the given `exposure_table`, because the core agent is designed to read in IRIs only.
+    4) Finally sends a request to the core agent with the IRIs of subject, exposure, and calculation.
+
+2) /csv_export/ (GET)
+
+    Parameters:
+    - subject_query_file: SPARQL query template to obtain subject IRIs, bind mounted in the folder called `/app/queries`.
+    - subject: IRI of subject
+    - subject_label_query_file: SPARQL query template to get user facing label of subject, mandatory SELECT variables - ?Label, ?Feature, where ?Feature is the subject IRIs obtained via `subject_query_file`. A VALUES clause using IRIs from `subject_query_file` is inserted into this query, e.g. VALUES ?Feature {&lt;http://subject1&gt; &lt;http://subject2&gt;}
+    - rdf_type: RDF type of calculation
+    - exposure_table: table name of exposure dataset
+
+    Example usage:
+
+    ```bash
+    curl -o greenspace_2016_raster_area_02.csv 'http://localhost:3838/exposure-calculation-agent/generate_results/?subject_query_file=subject_query.sparql&subject_label_query_file=subject_label_query.sparql&rdf_type=https://www.theworldavatar.com/kg/ontoexposure/RasterArea&exposure_table=ndvi'
+    ```
+
+3) /csv_export/trajectory (GET)
+
+    Parameters:
+    - subject: IRI of subject
+    - rdf_type: RDF type of calculation
+    - exposure_table: table name of exposure dataset
+    - lowerbound (optional): lowerbound of trajectory time series
+    - upperbound (optional): upperbound of trajectory time series
+
+    Example usage:
+
+    ```bash
+    curl -o trajectory_result.csv 'http://localhost:3838/exposure-calculation-agent/csv_export/trajectory?rdf_type=https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea&subject=http://trip_trajectory&exposure_table=parks_2016&lowerbound=1715759710072&upperbound=1715759730231'
+    ```
+
+## Note on Ontop usage
+
+[agent\calculation\resources\ontop.obda](agent\calculation\resources\ontop.obda) shows some triples that make use of the entire value of a table entry, e.g. `<{subject}>`, instead of something like `derivation:{id}`. When these are mixed together, mappings that make use of `<https://w3id.org/obda/vocabulary#isCanonicalIRIOf>` (Ontop's function to mark two IRIs are equivalent) may not work properly.
