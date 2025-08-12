@@ -1,11 +1,57 @@
 # Exposure calculation agent
 
-Calculates exposure of specified subjects to features in the environment.
+Calculates exposure of specified subjects to features in the environment. This agent is designed to be deployed in the TWA stack - <https://github.com/TheWorldAvatar/stack>.
 
 ## Environment variables
 
 1) NAMESPACE (namespace of blazegraph, defaults to kb)
 2) DATABASE (database name of postgres, defaults to postgres)
+
+## Building and debugging
+
+Note that the debugging and production image are separate images.
+
+To build the production image:
+
+```bash
+docker compose build
+```
+
+To push to the repository:
+
+```bash
+docker compose push
+```
+
+The stack manager config for production - [stack-manager\exposure-calculation-agent.json](stack-manager\exposure-calculation-agent.json).
+
+To build the debugging image:
+
+```bash
+docker compose -f docker-compose-debug.yml build
+```
+
+The stack manager config for debugging - [stack-manager\exposure-calculation-agent-debug.json](stack-manager\exposure-calculation-agent-debug.json), debug port is set to 5678.
+
+To attach using VS code, the following config can be added in `launch.json`
+
+```json
+{
+    "name": "Python: Attach using Debugpy",
+    "type": "debugpy",
+    "request": "attach",
+    "connect": {
+        "host": "localhost",
+        "port": 5678
+    },
+    "pathMappings": [
+        {
+            "localRoot": "${workspaceFolder}",
+            "remoteRoot": "/app"
+        }
+    ]
+}
+```
 
 ## Core API
 
