@@ -1,0 +1,15 @@
+[PrefixDeclaration]
+derivation: https://www.theworldavatar.com/kg/ontoderivation/
+exposure:   https://www.theworldavatar.com/kg/ontoexposure/
+
+[MappingDeclaration] @collection [[
+mappingId   exposure_results
+target      derivation:{id} a derivation:Derivation;
+                derivation:isDerivedFrom <{subject}>;
+                derivation:isDerivedFrom <{exposure}>.
+            exposure:result/{id} a exposure:ExposureResult;
+                exposure:hasCalculationMethod <{calculation}>;
+                derivation:belongsTo derivation:{id};
+                exposure:hasValue {value}.
+source      SELECT id, subject, exposure, calculation, value FROM exposure_result
+]]
