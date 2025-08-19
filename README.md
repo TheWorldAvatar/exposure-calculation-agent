@@ -1,6 +1,6 @@
 # Exposure calculation agent
 
-Calculates exposure of specified subjects to features in the environment. This agent is designed to be deployed in the TWA stack - <https://github.com/TheWorldAvatar/stack>.
+Calculates exposure of specified subjects to features in the environment. This agent is designed to be deployed in the HD4 stack - <https://github.com/TheWorldAvatar/hd4-stack>.
 
 ## Environment variables
 
@@ -145,7 +145,8 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
 <http://result> a exposure:ExposureResult;
     exposure:hasCalculationMethod <http://calculation>;
     derivation:belongsTo <http://derivation>;
-    exposure:hasValue 123.
+    exposure:hasValue 123;
+    exposure:hasUnit "[-]".
 ```
 
 #### Results for subjects with trajectory
@@ -161,6 +162,7 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
     derivation:isDerivedFrom <http://exposure>.
 <http://result> a exposure:ExposureResult;
     exposure:hasCalculationMethod <http://calculation>;
+    exposure:hasUnit "[-]";
     derivation:belongsTo <http://derivation>.
 ```
 
