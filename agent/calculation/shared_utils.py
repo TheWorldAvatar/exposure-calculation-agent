@@ -14,6 +14,11 @@ from pathlib import Path
 
 logger = agentlogging.get_logger('dev')
 
+rdf_type_to_unit = {
+    constants.TRAJECTORY_COUNT: '[-]',
+    constants.TRAJECTORY_AREA: 'm²'
+}
+
 
 def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_input: CalculationInput = None):
     with postgis_client.connect() as conn:
@@ -25,6 +30,7 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
                 exposure TEXT,
                 calculation TEXT,
                 value double precision,
+                unit TEXT,
                 CONSTRAINT exposure_result_constraint UNIQUE (subject, exposure, calculation)
             );
             """
@@ -34,22 +40,23 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
 
             if calculation_input.calculation_metadata.rdf_type not in constants.TRAJECTORY_TYPES:
                 insert_query = """
-                    INSERT INTO exposure_result (subject, exposure, calculation, value)
+                    INSERT INTO exposure_result (subject, exposure, calculation, value, unit)
                     VALUES %s
                     ON CONFLICT (subject, exposure, calculation)
-                    DO UPDATE SET value = EXCLUDED.value
+                    DO UPDATE SET value = EXCLUDED.value,
+                                  unit = EXCLUDED.unit
                 """
 
                 for subject, value in subject_to_value_dict.items():
                     data.append((subject, calculation_input.exposure,
-                                calculation_input.calculation_metadata.iri, value))
+                                calculation_input.calculation_metadata.iri, value.value, value.unit))
             else:
                 # trajectory case, only one subject
                 data = [(calculation_input.subject, calculation_input.exposure,
-                         calculation_input.calculation_metadata.iri)]
+                         calculation_input.calculation_metadata.iri, rdf_type_to_unit[calculation_input.calculation_metadata.rdf_type])]
 
                 insert_query = """
-                    INSERT INTO exposure_result (subject, exposure, calculation)
+                    INSERT INTO exposure_result (subject, exposure, calculation, unit)
                     VALUES %s
                     ON CONFLICT DO NOTHING
                 """
