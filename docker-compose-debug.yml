@@ -1,6 +1,6 @@
 services:
   exposure-calculation-agent:
-    image: exposure-calculation-agent:1.0.0
+    image: exposure-calculation-agent:1.1.0
     build:
       target: debug
       context: .
