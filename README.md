@@ -23,7 +23,7 @@ To push to the repository:
 docker compose push
 ```
 
-The stack manager config for production - [stack-manager\exposure-calculation-agent.json](stack-manager\exposure-calculation-agent.json).
+The stack manager config for production - <https://github.com/TheWorldAvatar/hd4-stack/blob/main/stack-manager/inputs/config/services/exposure-calculation-agent.json>.
 
 To build the debugging image:
 
@@ -31,7 +31,7 @@ To build the debugging image:
 docker compose -f docker-compose-debug.yml build
 ```
 
-The stack manager config for debugging - [stack-manager\exposure-calculation-agent-debug.json](stack-manager\exposure-calculation-agent-debug.json), debug port is set to 5678.
+The stack manager config for debugging - <https://github.com/TheWorldAvatar/hd4-stack/blob/main/stack-manager/inputs/config/services/exposure-calculation-agent-debug.json>, debug port is set to 5678.
 
 To attach using VS code, the following config can be added in `launch.json`
 
