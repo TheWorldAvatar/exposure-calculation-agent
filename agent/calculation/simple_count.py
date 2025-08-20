@@ -8,7 +8,6 @@ import sys
 from agent.objects.exposure_value import ExposureValue
 
 logger = agentlogging.get_logger('dev')
-unit = '[-]'
 
 
 def simple_count(calculation_input: CalculationInput):

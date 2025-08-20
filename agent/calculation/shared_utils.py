@@ -11,12 +11,13 @@ from agent.utils.postgis_client import postgis_client
 from psycopg2.extras import execute_values
 from agent.utils.stack_gateway import stack_clients_view
 from pathlib import Path
+from agent.utils.constants import METRE_SQUARED
 
 logger = agentlogging.get_logger('dev')
 
 rdf_type_to_unit = {
-    constants.TRAJECTORY_COUNT: '[-]',
-    constants.TRAJECTORY_AREA: 'm²'
+    constants.TRAJECTORY_COUNT: '',
+    constants.TRAJECTORY_AREA: METRE_SQUARED
 }
 
 

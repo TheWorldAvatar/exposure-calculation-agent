@@ -43,3 +43,6 @@ CALCULATION_TYPES = [TRAJECTORY_COUNT, SIMPLE_COUNT,
 TRAJECTORY_TYPES = [TRAJECTORY_COUNT, TRAJECTORY_AREA]
 
 BIND_MOUNT_PATH = '/app/queries/'  # needs to match with stack manager config
+
+# units
+METRE_SQUARED = 'm²'
