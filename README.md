@@ -298,7 +298,7 @@ The following APIs are used to initialise the necessary instances and trigger th
     Parameters:
     - subject_query_file: SPARQL query template to obtain subject IRIs, bind mounted in the folder called `/app/queries`.
     - subject: IRI of subject
-    - subject_label_query_file: SPARQL query template to get user facing label of subject, mandatory SELECT variables - ?Label, ?Feature, where ?Feature is the subject IRIs obtained via `subject_query_file`. A VALUES clause using IRIs from `subject_query_file` is inserted into this query, e.g. VALUES ?Feature {&lt;http://subject1&gt; &lt;http://subject2&gt;}
+    - subject_label_query_file: SPARQL query template to get user facing label of subject, mandatory SELECT variables - ?Label, ?Feature, where ?Feature is the subject IRIs obtained via `subject_query_file`. A VALUES clause using IRIs from `subject_query_file` is inserted into this query, e.g. `VALUES ?Feature {<http://subject1> <http://subject2>}`
     - rdf_type: RDF type of calculation
     - exposure_table: table name of exposure dataset
 
