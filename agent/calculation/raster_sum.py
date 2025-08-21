@@ -6,6 +6,7 @@ from twa import agentlogging
 from psycopg2.extras import RealDictCursor
 from tqdm import tqdm
 import sys
+from agent.objects.exposure_value import ExposureValue
 
 logger = agentlogging.get_logger('dev')
 
@@ -34,7 +35,7 @@ def raster_sum(calculation_input: CalculationInput):
             raster_sql = raster_sql.format(TEMP_TABLE=temp_table)
 
             for iri, point in tqdm(iri_to_point_dict.items(), mininterval=60, ncols=80, file=sys.stdout):
-                subject_to_result_dict[iri] = 0
+                subject_to_result_dict[iri] = ExposureValue(value=0)
                 replacements = {
                     'GEOMETRY_PLACEHOLDER': point.wkt,
                     'DISTANCE_PLACEHOLDER': calculation_input.calculation_metadata.distance
@@ -44,7 +45,7 @@ def raster_sum(calculation_input: CalculationInput):
                     query_result = cur.fetchall()
                     for row in query_result:
                         if row['count'] > 0:
-                            subject_to_result_dict[iri] += row['sum']
+                            subject_to_result_dict[iri].value += row['sum']
 
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)

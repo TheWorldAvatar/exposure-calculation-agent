@@ -5,6 +5,8 @@ from agent.utils.postgis_client import postgis_client
 from twa import agentlogging
 from tqdm import tqdm
 import sys
+from agent.objects.exposure_value import ExposureValue
+from agent.utils.constants import METRE_SQUARED
 
 logger = agentlogging.get_logger('dev')
 
@@ -40,9 +42,11 @@ def simple_area(calculation_input: CalculationInput):
                 if cur.description:
                     query_result = cur.fetchall()
                     if query_result[0][0] is None:
-                        subject_to_result_dict[iri] = 0
+                        subject_to_result_dict[iri] = ExposureValue(
+                            value=0, unit=METRE_SQUARED)
                     else:
-                        subject_to_result_dict[iri] = query_result[0][0]
+                        subject_to_result_dict[iri] = ExposureValue(
+                            value=query_result[0][0], unit=METRE_SQUARED)
 
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)

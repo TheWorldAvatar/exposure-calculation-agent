@@ -5,6 +5,7 @@ from agent.utils.postgis_client import postgis_client
 from twa import agentlogging
 from tqdm import tqdm
 import sys
+from agent.objects.exposure_value import ExposureValue
 
 logger = agentlogging.get_logger('dev')
 
@@ -40,7 +41,8 @@ def simple_count(calculation_input: CalculationInput):
                 cur.execute(count_sql, replacements)
                 if cur.description:
                     query_result = cur.fetchall()
-                    subject_to_result_dict[iri] = query_result[0][0]
+                    subject_to_result_dict[iri] = ExposureValue(
+                        value=query_result[0][0])
 
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)

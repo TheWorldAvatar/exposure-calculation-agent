@@ -10,6 +10,7 @@ target      derivation:{id} a derivation:Derivation;
             exposure:result/{id} a exposure:ExposureResult;
                 exposure:hasCalculationMethod <{calculation}>;
                 derivation:belongsTo derivation:{id};
-                exposure:hasValue {value}.
-source      SELECT id, subject, exposure, calculation, value FROM exposure_result
+                exposure:hasValue {value};
+                exposure:hasUnit {unit}.
+source      SELECT id, subject, exposure, calculation, value, unit FROM exposure_result
 ]]

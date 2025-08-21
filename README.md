@@ -1,6 +1,6 @@
 # Exposure calculation agent
 
-Calculates exposure of specified subjects to features in the environment. This agent is designed to be deployed in the TWA stack - <https://github.com/TheWorldAvatar/stack>.
+Calculates exposure of specified subjects to features in the environment. This agent is designed to be deployed in the HD4 stack - <https://github.com/TheWorldAvatar/hd4-stack>.
 
 ## Environment variables
 
@@ -23,7 +23,7 @@ To push to the repository:
 docker compose push
 ```
 
-The stack manager config for production - [stack-manager\exposure-calculation-agent.json](stack-manager\exposure-calculation-agent.json).
+The stack manager config for production - <https://github.com/TheWorldAvatar/hd4-stack/blob/main/stack-manager/inputs/config/services/exposure-calculation-agent.json>.
 
 To build the debugging image:
 
@@ -31,7 +31,7 @@ To build the debugging image:
 docker compose -f docker-compose-debug.yml build
 ```
 
-The stack manager config for debugging - [stack-manager\exposure-calculation-agent-debug.json](stack-manager\exposure-calculation-agent-debug.json), debug port is set to 5678.
+The stack manager config for debugging - <https://github.com/TheWorldAvatar/hd4-stack/blob/main/stack-manager/inputs/config/services/exposure-calculation-agent-debug.json>, debug port is set to 5678.
 
 To attach using VS code, the following config can be added in `launch.json`
 
@@ -145,7 +145,8 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
 <http://result> a exposure:ExposureResult;
     exposure:hasCalculationMethod <http://calculation>;
     derivation:belongsTo <http://derivation>;
-    exposure:hasValue 123.
+    exposure:hasValue 123;
+    exposure:hasUnit "[-]".
 ```
 
 #### Results for subjects with trajectory
@@ -161,6 +162,7 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
     derivation:isDerivedFrom <http://exposure>.
 <http://result> a exposure:ExposureResult;
     exposure:hasCalculationMethod <http://calculation>;
+    exposure:hasUnit "[-]";
     derivation:belongsTo <http://derivation>.
 ```
 
@@ -263,7 +265,7 @@ Exposure: A polygon dataset
 
 ## User facing APIs
 
-These APIs are not part of the core calculation agent and they are located in [agent\interactor](agent\interactor).
+These APIs are not part of the core calculation agent and they are located in [agent/interactor](agent/interactor).
 
 The following APIs are used to initialise the necessary instances and trigger the core agent.
 
@@ -296,7 +298,7 @@ The following APIs are used to initialise the necessary instances and trigger th
     Parameters:
     - subject_query_file: SPARQL query template to obtain subject IRIs, bind mounted in the folder called `/app/queries`.
     - subject: IRI of subject
-    - subject_label_query_file: SPARQL query template to get user facing label of subject, mandatory SELECT variables - ?Label, ?Feature, where ?Feature is the subject IRIs obtained via `subject_query_file`. A VALUES clause using IRIs from `subject_query_file` is inserted into this query, e.g. VALUES ?Feature {&lt;http://subject1&gt; &lt;http://subject2&gt;}
+    - subject_label_query_file: SPARQL query template to get user facing label of subject, mandatory SELECT variables - ?Label, ?Feature, where ?Feature is the subject IRIs obtained via `subject_query_file`. A VALUES clause using IRIs from `subject_query_file` is inserted into this query, e.g. `VALUES ?Feature {<http://subject1> <http://subject2>}`
     - rdf_type: RDF type of calculation
     - exposure_table: table name of exposure dataset
 
@@ -323,4 +325,4 @@ The following APIs are used to initialise the necessary instances and trigger th
 
 ## Note on Ontop usage
 
-[agent\calculation\resources\ontop.obda](agent\calculation\resources\ontop.obda) shows some triples that make use of the entire value of a table entry, e.g. `<{subject}>`, instead of something like `derivation:{id}`. When these are mixed together, mappings that make use of `<https://w3id.org/obda/vocabulary#isCanonicalIRIOf>` (Ontop's function to mark two IRIs are equivalent) may not work properly.
+[agent/calculation/resources/ontop.obda](agent/calculation/resources/ontop.obda) shows some triples that make use of the entire value of a table entry, e.g. `<{subject}>`, instead of something like `derivation:{id}`. When these are mixed together, mappings that make use of `<https://w3id.org/obda/vocabulary#isCanonicalIRIOf>` (Ontop's function to mark two IRIs are equivalent) may not work properly.
