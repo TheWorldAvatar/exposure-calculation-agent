@@ -265,7 +265,7 @@ Exposure: A polygon dataset
 
 ## User facing APIs
 
-These APIs are not part of the core calculation agent and they are located in [agent\interactor](agent\interactor).
+These APIs are not part of the core calculation agent and they are located in [agent/interactor](agent/interactor).
 
 The following APIs are used to initialise the necessary instances and trigger the core agent.
 
@@ -325,4 +325,4 @@ The following APIs are used to initialise the necessary instances and trigger th
 
 ## Note on Ontop usage
 
-[agent\calculation\resources\ontop.obda](agent\calculation\resources\ontop.obda) shows some triples that make use of the entire value of a table entry, e.g. `<{subject}>`, instead of something like `derivation:{id}`. When these are mixed together, mappings that make use of `<https://w3id.org/obda/vocabulary#isCanonicalIRIOf>` (Ontop's function to mark two IRIs are equivalent) may not work properly.
+[agent/calculation/resources/ontop.obda](agent/calculation/resources/ontop.obda) shows some triples that make use of the entire value of a table entry, e.g. `<{subject}>`, instead of something like `derivation:{id}`. When these are mixed together, mappings that make use of `<https://w3id.org/obda/vocabulary#isCanonicalIRIOf>` (Ontop's function to mark two IRIs are equivalent) may not work properly.
