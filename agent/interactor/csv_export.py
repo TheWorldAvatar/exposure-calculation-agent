@@ -67,6 +67,54 @@ def non_trajectory():
     return response
 
 
+@csv_export_bp.route('/greenspace', methods=['GET'])
+def greenspace():
+    # IRI(s) of subject to calculate
+    subject = request.args.get('subject')
+    exposure_table_list = request.args.getlist('exposure_table')
+    rdf_type_list = request.args.getlist('rdf_type')
+
+    # query to obtain subject IRIs
+    subject_query_file = request.args.get('subject_query_file')
+
+    # query for user facing label of subject IRI, e.g. postcode value
+    subject_label_query_file = request.args.get('subject_label_query_file')
+
+    if subject is not None and subject_query_file is not None:
+        raise Exception('Provide subject or subject_query_file, but not both')
+
+    # do SPARQL query to obtain a list of subject IRIs
+    if subject_query_file is not None:
+        subject = _get_subjects(subject_query_file=subject_query_file)
+
+    # returns IRI to label
+    logger.info('Querying label')
+    subject_to_label_dict = _get_subject_to_label_dict(
+        subject_label_query_file=subject_label_query_file, subjects=subject)
+
+    logger.info('Getting subject coordinates')
+    subject_to_point_dict = _get_subject_to_point_dict(subject=subject)
+
+    # dictionary hierarchy [dataset_year][calculation][subject][distance]
+    overall_result = defaultdict(lambda: defaultdict(dict))
+    for exposure_table in exposure_table_list:
+        exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
+        dataset_year = _get_dataset_year(exposure_dataset_iri)
+        for calculation in rdf_type_list:
+            logger.info('Querying results')
+            subject_to_result_dict = _get_subject_to_result_dict(
+                subject=subject, exposure=exposure_dataset_iri, calculation_type=calculation)
+            overall_result[dataset_year][calculation] = subject_to_result_dict
+
+    logger.info('Generating CSV file')
+    csv = _create_csv2(overall_result=overall_result, subject_to_label_dict=subject_to_label_dict,
+                       subject_to_point_dict=subject_to_point_dict)
+
+    response = Response(csv.getvalue(), mimetype='text/csv')
+    response.headers["Content-Disposition"] = "attachment; filename=data.csv"
+    return response
+
+
 @csv_export_bp.route('/trajectory', methods=['GET'])
 def trajectory():
     logger.info('Received request to generate CSV file for trajectory')
@@ -164,7 +212,7 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
                     <{constants.IS_DERIVED_FROM}> <{exposure}>.
                 ?result <{constants.BELONGS_TO}> ?derivation;
                     <{constants.HAS_VALUE}> ?value;
-                    <{constants.HAS_CALCULATION_METHOD}> ?calcualtion.
+                    <{constants.HAS_CALCULATION_METHOD}> ?calculation.
             }}
         }}
         """
@@ -294,6 +342,49 @@ def _create_csv(subject_to_result_dict, subject_to_label_dict, subject_to_point_
     return output
 
 
+def _create_csv2(overall_result, subject_to_label_dict, subject_to_point_dict):
+
+    subject_to_header = defaultdict(lambda: defaultdict(dict))
+
+    for year in overall_result.keys():
+        calculation_to_subject = overall_result[year]
+
+        for calculation in calculation_to_subject.keys():
+            subject_to_distance = calculation_to_subject[calculation]
+
+            for subject in subject_to_distance.keys():
+                distance_to_value = subject_to_distance[subject]
+
+                for distance in distance_to_value.keys():
+                    value = distance_to_value[distance]
+
+                    header = 'greenspace_' + \
+                        re.findall(r'[^/]+$', calculation)[0] + \
+                        '_' + distance + 'm_' + year
+                    header = header.lower()
+                    subject_to_header[subject][header] = value
+    data = []
+
+    for subject in subject_to_header.keys():
+        label = subject_to_label_dict[subject]
+        value = subject_to_header[subject]
+        lat = subject_to_point_dict[subject].y
+        lng = subject_to_point_dict[subject].x
+
+        data.append({'postal_code': label, 'lat': lat, 'lng': lng} | value)
+
+    output = io.StringIO()
+    if data:
+        writer = csv.DictWriter(output, fieldnames=data[0].keys())
+    else:
+        writer = csv.DictWriter(
+            output, fieldnames=['postal_code', 'lat', 'lng'])
+    writer.writeheader()
+    writer.writerows(data)
+
+    return output
+
+
 def _get_subject_to_point_dict(subject):
     """
     Identical to the one use by core agent but does not convert lat lon..
@@ -357,6 +448,20 @@ def _get_trip(point_iri: str):
         raise Exception('More than 1 trip instance detected?')
     else:
         return query_results.getJSONObject(0).getString('trip')
+
+
+def _get_dataset_year(dataset_iri):
+    from agent.utils.kg_client import kg_client
+    query = f"""
+    SELECT ?year
+    WHERE {{
+        <{dataset_iri}> <{constants.HAS_YEAR}> ?year.
+    }}
+    """
+
+    query_results = kg_client.remote_store_client.executeQuery(query)
+
+    return query_results.getJSONObject(0).getString('year')
 
 
 def _chunk_list(values, chunk_size=1000):

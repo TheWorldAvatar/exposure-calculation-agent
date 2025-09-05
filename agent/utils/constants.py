@@ -18,6 +18,7 @@ ENDPOINT_URL = PREFIX_DCAT + 'endpointURL'
 IS_DERIVED_FROM = PREFIX_DERIVATION + 'isDerivedFrom'
 BELONGS_TO = PREFIX_DERIVATION + 'belongsTo'
 HAS_CALCULATION_METHOD = PREFIX_EXPOSURE + 'hasCalculationMethod'
+HAS_YEAR = PREFIX_EXPOSURE + 'hasYear'  # year of exposure dataset
 
 # time series related
 TIMESERIES_NAMESPACE = 'https://www.theworldavatar.com/kg/ontotimeseries/'
