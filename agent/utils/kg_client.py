@@ -1,5 +1,5 @@
 from agent.utils.baselib_gateway import baselib_view
-from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL, BLAZEGRAPH_DEFAULT_URL
+from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL, BLAZEGRAPH_DEFAULT_URL, STACK_OUTGOING_URL
 import agent.utils.constants as constants
 from twa import agentlogging
 
@@ -17,6 +17,8 @@ class KgClient():
         self.remote_store_client_kb = baselib_view.RemoteStoreClient(
             BLAZEGRAPH_DEFAULT_URL, BLAZEGRAPH_DEFAULT_URL)
         self.ontop_client = baselib_view.RemoteStoreClient(ONTOP_URL)
+        self.remote_store_client_federate = baselib_view.RemoteStoreClient(
+            STACK_OUTGOING_URL)
 
     def get_time_series(self, iri: str):
         query = f"""
