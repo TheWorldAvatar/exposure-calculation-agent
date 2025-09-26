@@ -1,11 +1,11 @@
 from flask import Blueprint, request
 from twa import agentlogging
+from agent.calculation.area_weighted_sum import area_weighted_sum
 from agent.calculation.simple_area import simple_area
 from agent.calculation.trajectory import trajectory
 from agent.calculation.simple_count import simple_count
-from agent.calculation.raster_sum import raster_sum
 from agent.objects.calculation_metadata import get_calculation_metadata
-from agent.utils.constants import TRAJECTORY_COUNT, SIMPLE_COUNT, RASTER_SUM, SIMPLE_AREA, TRAJECTORY_AREA
+from agent.utils.constants import TRAJECTORY_COUNT, SIMPLE_COUNT, SIMPLE_AREA, TRAJECTORY_AREA, AREA_WEIGHTED_SUM
 from agent.calculation.calculation_input import CalculationInput
 
 logger = agentlogging.get_logger('dev')
@@ -16,7 +16,7 @@ function_map = {
     TRAJECTORY_COUNT: trajectory,
     TRAJECTORY_AREA: trajectory,
     SIMPLE_COUNT: simple_count,
-    RASTER_SUM: raster_sum,
+    AREA_WEIGHTED_SUM: area_weighted_sum,
     SIMPLE_AREA: simple_area
 }
 
