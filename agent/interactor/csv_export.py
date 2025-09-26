@@ -164,7 +164,7 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
                     <{constants.IS_DERIVED_FROM}> <{exposure}>.
                 ?result <{constants.BELONGS_TO}> ?derivation;
                     <{constants.HAS_VALUE}> ?value;
-                    <{constants.HAS_CALCULATION_METHOD}> ?calcualtion.
+                    <{constants.HAS_CALCULATION_METHOD}> ?calculation.
             }}
         }}
         """
