@@ -9,6 +9,7 @@ from pathlib import Path
 from rdflib.plugins.sparql.parser import parseQuery
 from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL
 from agent.utils.ts_client import TimeSeriesClient
+import json
 
 logger = agentlogging.get_logger('dev')
 
@@ -61,15 +62,14 @@ def trigger_calculation():
 
         logger.info(
             'Querying subject IRIs with provided SPARQL query template')
-        query_result = kg_client.remote_store_client.executeFederatedQuery(
-            [ONTOP_URL, BLAZEGRAPH_URL], query)
+        query_result = json.loads(kg_client.remote_store_client.executeFederatedQuery(
+            [ONTOP_URL, BLAZEGRAPH_URL], query).toString())
 
-        logger.info('Received ' + str(query_result.length()) + ' IRIs')
+        logger.info('Received ' + str(len(query_result)) + ' IRIs')
 
         subject_list = []
-        for i in range(query_result.length()):
-            subject_list.append(
-                query_result.getJSONObject(i).getString(select_var))
+        for i in query_result:
+            subject_list.append(i[select_var])
 
     # get dataset iri to pass the core calculation agent
     exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
