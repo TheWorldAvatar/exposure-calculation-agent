@@ -29,7 +29,7 @@ def area_weighted_sum(calculation_input: CalculationInput):
             # temp table for efficiency
             temp_table = 'temp_table'
             temp_table_sql = temp_table_sql.format(TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name,
-                                                   GEOMETRY_COLUMN=exposure_dataset.geometry_column, VALUE_COLUMN=exposure_dataset.value_column)
+                                                   GEOMETRY_COLUMN=exposure_dataset.geometry_column, VALUE_COLUMN=exposure_dataset.value_column, AREA_COLUMN=exposure_dataset.area_column)
             cur.execute(temp_table_sql)
 
             area_weighted_sum_sql = area_weighted_sum_sql.format(

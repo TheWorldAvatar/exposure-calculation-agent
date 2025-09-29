@@ -12,6 +12,8 @@ class ExposureDataset:
     geometry_column: str = constants.VECTOR_GEOMETRY_COLUMN
     # this property is used for area weighted calculation, it is the value associated with a polygon
     value_column: Optional[str] = None
+    # used for area weighted calculation, pre-calculated area of a polygon (converted from pixel)
+    area_column: Optional[str] = None
 
 
 def get_exposure_dataset(dataset_iri):
@@ -26,6 +28,9 @@ def get_exposure_dataset(dataset_iri):
         }}
         OPTIONAL {{
             <{dataset_iri}> <{constants.HAS_VALUE_COLUMN}> ?value_column.
+        }}
+        OPTIONAL {{
+            <{dataset_iri}> <{constants.HAS_AREA_COLUMN}> ?area_column.
         }}
         ?postgis a <{constants.POSTGIS_SERVICE}>;
             <{constants.SERVES_DATASET}> ?catalog;
@@ -51,5 +56,8 @@ def get_exposure_dataset(dataset_iri):
 
     if 'value_column' in query_result[0]:
         exposure_dataset.value_column = query_result[0]['value_column']
+
+    if 'area_column' in query_result[0]:
+        exposure_dataset.area_column = query_result[0]['area_column']
 
     return exposure_dataset

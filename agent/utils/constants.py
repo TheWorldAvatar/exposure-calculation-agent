@@ -20,6 +20,7 @@ BELONGS_TO = PREFIX_DERIVATION + 'belongsTo'
 HAS_CALCULATION_METHOD = PREFIX_EXPOSURE + 'hasCalculationMethod'
 HAS_GEOMETRY_COLUMN = PREFIX_EXPOSURE + 'hasGeometryColumn'
 HAS_VALUE_COLUMN = PREFIX_EXPOSURE + 'hasValueColumn'
+HAS_AREA_COLUMN = PREFIX_EXPOSURE + 'hasAreaColumn'
 
 # time series related
 TIMESERIES_NAMESPACE = 'https://www.theworldavatar.com/kg/ontotimeseries/'
