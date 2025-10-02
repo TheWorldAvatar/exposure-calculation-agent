@@ -19,7 +19,7 @@ class ExposureDataset:
 def get_exposure_dataset(dataset_iri):
     from agent.utils.kg_client import kg_client
     query = f"""
-    SELECT ?url ?table_name ?geometry_column ?value_column
+    SELECT ?url ?table_name ?geometry_column ?value_column ?area_column
     WHERE {{
         ?catalog <{constants.DATASET_PREDICATE}> <{dataset_iri}>.
         <{dataset_iri}> <{constants.DCTERM_TITLE}> ?table_name.
