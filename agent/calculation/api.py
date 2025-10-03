@@ -5,7 +5,7 @@ from agent.calculation.simple_area import simple_area
 from agent.calculation.trajectory import trajectory
 from agent.calculation.simple_count import simple_count
 from agent.objects.calculation_metadata import get_calculation_metadata
-from agent.utils.constants import TRAJECTORY_COUNT, SIMPLE_COUNT, SIMPLE_AREA, TRAJECTORY_AREA, AREA_WEIGHTED_SUM
+import agent.utils.constants as constants
 from agent.calculation.calculation_input import CalculationInput
 
 logger = agentlogging.get_logger('dev')
@@ -13,11 +13,11 @@ calculation_blueprint = Blueprint('calculation_blueprint', __name__)
 
 # map of RDF type of calculation to the function to call
 function_map = {
-    TRAJECTORY_COUNT: trajectory,
-    TRAJECTORY_AREA: trajectory,
-    SIMPLE_COUNT: simple_count,
-    AREA_WEIGHTED_SUM: area_weighted_sum,
-    SIMPLE_AREA: simple_area
+    constants.TRAJECTORY_COUNT: trajectory,
+    constants.TRAJECTORY_AREA: trajectory,
+    constants.SIMPLE_COUNT: simple_count,
+    constants.AREA_WEIGHTED_SUM: area_weighted_sum,
+    constants.SIMPLE_AREA: simple_area
 }
 
 CALCULATE_ROUTE = '/calculate_exposure'
