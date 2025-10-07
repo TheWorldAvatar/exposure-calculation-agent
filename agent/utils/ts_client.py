@@ -78,6 +78,11 @@ class TimeSeriesClient:
 
     def add_columns(self, time_series_iri, data_iri: list, class_list: list):
         with self.connect() as conn:
+            logger.info("time_series_iri:")
+            logger.info(time_series_iri)
+            logger.info("data_iri:")
+            for di in data_iri:
+                logger.info(di)
             self.tsclient.addColumnsToExistingTimeSeries(
                 time_series_iri, data_iri, class_list, None, conn)
         logger.info('Added new columns')
