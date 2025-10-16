@@ -164,7 +164,7 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
                     <{constants.IS_DERIVED_FROM}> <{exposure}>.
                 ?result <{constants.BELONGS_TO}> ?derivation;
                     <{constants.HAS_VALUE}> ?value;
-                    <{constants.HAS_CALCULATION_METHOD}> ?calcualtion.
+                    <{constants.HAS_CALCULATION_METHOD}> ?calculation.
             }}
         }}
         """
@@ -273,6 +273,7 @@ def _insert_values_clause(sparql_query, varname, uris):
 
 def _create_csv(subject_to_result_dict, subject_to_label_dict, subject_to_point_dict):
     data = []
+    header = []
 
     for subject in subject_to_result_dict.keys():
         label = subject_to_label_dict[subject]
@@ -280,11 +281,16 @@ def _create_csv(subject_to_result_dict, subject_to_label_dict, subject_to_point_
         lat = subject_to_point_dict[subject].y
         lng = subject_to_point_dict[subject].x
 
-        data.append({'postal_code': label, 'lat': lat, 'lng': lng} | value)
+        row = {'postal_code': label, 'lat': lat, 'lng': lng} | value
+
+        data.append(row)
+
+        extra_keys = set(row.keys()) - set(header)
+        header.extend(extra_keys)
 
     output = io.StringIO()
     if data:
-        writer = csv.DictWriter(output, fieldnames=data[0].keys())
+        writer = csv.DictWriter(output, fieldnames=header)
     else:
         writer = csv.DictWriter(
             output, fieldnames=['postal_code', 'lat', 'lng'])

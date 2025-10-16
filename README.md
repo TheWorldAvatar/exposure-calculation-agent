@@ -192,7 +192,7 @@ Supported calculation types:
 2. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`
 3. `<https://www.theworldavatar.com/kg/ontoexposure/Count>`
 4. `<https://www.theworldavatar.com/kg/ontoexposure/Area>`
-5. `<https://www.theworldavatar.com/kg/ontoexposure/RasterSum>`
+5. `<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`
 
 Permissible metadata depends on the calculation type. A result instance is instantiated for each subject - exposure - calculation combination.
 
@@ -261,6 +261,35 @@ Exposure: A polygon dataset
 ```ttl
 <http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/Area>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
+```
+
+#### Area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`)
+
+Overview: Applies a buffer around a subject and find the intersected elements in the exposure dataset. Then sums up the product of area and value of each intersected polygon. The exposure dataset is expected to be a vector dataset converted from a raster dataset via ST_PixelAsPolygons. For efficiency, the area of each polygon is precalculated, if a polygon is intersected partially, the whole area will be taken into account. If the polygons are small (converted from pixel), the error from this approximation should be small.
+
+The following shows the equation:
+
+$\sum_{i=1}^N (A_i \times x_i)$
+
+where $i$ represents each cell enclosed by the buffer around the subject, $A_i=$ area of cell $i$, $N$ is the number of cells enclosed by the buffer and $x_i$ is the value associated with the cell.
+
+Requirements:
+Subject: Any vector with a WKT literal associated via geo:asWKT, can be a list of IRI
+Exposure: A vector dataset with a value attached to each polygon
+
+Calculation instance:
+
+```ttl
+<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
+```
+
+Exposure dataset, needs to have the area and value columns specified
+
+```ttl
+<http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
+    <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val".
 ```
 
 ## User facing APIs
