@@ -16,7 +16,7 @@ def retrieve_stack_settings():
     e.g. getting a RemoteStoreClient via BlazegraphClient and pass it to TimeSeriesClient
     """
     # Define global scope for global variables
-    global BLAZEGRAPH_URL, ONTOP_URL, RDB_URL, RDB_USER, RDB_PASSWORD, ONTOP_CLIENT, BLAZEGRAPH_DEFAULT_URL
+    global BLAZEGRAPH_URL, ONTOP_URL, RDB_URL, RDB_USER, RDB_PASSWORD, ONTOP_CLIENT, BLAZEGRAPH_DEFAULT_URL, STACK_OUTGOING
     try:
         # Retrieve endpoint configurations from Stack clients
         ONTOP_URL = stack_clients_view.OntopClient.getInstance(
@@ -35,6 +35,9 @@ def retrieve_stack_settings():
         ).readEndpointConfig().getUrl('kb')
 
         ONTOP_CLIENT = stack_clients_view.OntopClient.getInstance("ontop")
+
+        STACK_OUTGOING = stack_clients_view.Rdf4jClient.getInstance(
+        ).readEndpointConfig().getOutgoingRepositoryUrl()
 
     except Exception as e:
         err_msg = "General Stack client parameter extraction error: {}".format(

@@ -16,3 +16,9 @@ stackClientsGw.importPackages(
     stack_clients_view, "com.cmclinnovations.stack.clients.postgis.PostGISClient")
 stackClientsGw.importPackages(
     stack_clients_view, "com.cmclinnovations.stack.clients.ontop.OntopClient")
+stackClientsGw.importPackages(
+    stack_clients_view, "com.cmclinnovations.stack.clients.rdf4j.Rdf4jClient")
+stackClientsGw.importPackages(
+    stack_clients_view, "uk.ac.cam.cares.jps.base.query.*")
+stackClientsGw.importPackages(
+    stack_clients_view, "uk.ac.cam.cares.jps.base.timeseries.*")

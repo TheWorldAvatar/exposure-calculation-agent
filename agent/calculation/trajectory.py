@@ -5,11 +5,15 @@ from agent.utils.ts_client import TimeSeriesClient
 from agent.calculation.calculation_input import CalculationInput
 from shapely.geometry import LineString
 from twa import agentlogging
-from agent.utils.baselib_gateway import baselib_view, jpsBaseLibGW
+from agent.utils.stack_gateway import stack_clients_view
 from agent.utils.postgis_client import postgis_client
 from agent.objects.trip import Trip
 from pyproj import Transformer, CRS
 import agent.utils.constants as constants
+import json
+from shapely import wkt
+from datetime import datetime
+from py4j.java_gateway import JavaObject
 
 logger = agentlogging.get_logger('dev')
 
@@ -19,8 +23,8 @@ rdf_type_to_sql_path = {
 }
 
 rdf_type_to_ts_class = {
-    constants.TRAJECTORY_COUNT: baselib_view.java.lang.Integer.TYPE,
-    constants.TRAJECTORY_AREA: baselib_view.java.lang.Double.TYPE,
+    constants.TRAJECTORY_COUNT: stack_clients_view.java.lang.Integer.TYPE,
+    constants.TRAJECTORY_AREA: stack_clients_view.java.lang.Double.TYPE,
 }
 
 
@@ -31,15 +35,6 @@ def trajectory(calculation_input: CalculationInput):
     lowerbound = calculation_input.calculation_metadata.lowerbound
     upperbound = calculation_input.calculation_metadata.upperbound
 
-    # convert upperbound and lowerbound into the correct types from string
-    if upperbound is not None:
-        upperbound = _convert_input_time_for_timeseries(
-            upperbound, calculation_input.subject)
-
-    if lowerbound is not None:
-        lowerbound = _convert_input_time_for_timeseries(
-            lowerbound, calculation_input.subject)
-
     # check if there is a trip instance attached to this trajectory
     trip_iri = _get_trip(calculation_input.subject)
 
@@ -47,42 +42,31 @@ def trajectory(calculation_input: CalculationInput):
     if trip_iri is not None:
         data_iri_list.append(trip_iri)
 
-    # get time series data from database
-    logger.info('Querying time series from database')
-    trajectory_time_series = ts_client.get_time_series(
-        data_iri_list=data_iri_list, lowerbound=lowerbound, upperbound=upperbound)
+    logger.info('Querying time series')
 
-    if trajectory_time_series.getTimes().isEmpty():
+    points, trip_list, time_list = _get_time_series_sparql(
+        calculation_input.subject, trip_iri, lowerbound, upperbound)
+
+    if len(points) == 0:
         logger.info('Trajectory time series is empty')
         return None
 
-    # Java object list
-    postgis_point_list = trajectory_time_series.getValuesAsPoint(
-        calculation_input.subject)
-
-    points_original = [(p.getX(), p.getY()) for p in postgis_point_list]
-
     # create temporary centroid for AEQD projection
-    centroid = LineString(points_original).envelope.centroid
+    centroid = LineString(points).envelope.centroid
     proj4text = f"+proj=aeqd +lat_0={centroid.y} +lon_0={centroid.x} +units=m +datum=WGS84 +no_defs"
 
-    srid = postgis_point_list[0].getSrid()
-
-    # transform to EPSG 3857 to use metres later
     transformer = Transformer.from_crs(
-        "EPSG:" + str(srid), CRS.from_proj4(proj4text), always_xy=True)
-    points = [transformer.transform(p.getX(), p.getY())
-              for p in postgis_point_list]
+        "EPSG:4326", CRS.from_proj4(proj4text), always_xy=True)
+    points = [transformer.transform(p.x, p.y) for p in points]
 
     logger.info('Processing trips')
     if trip_iri is not None:
         # split trajectory into trips
-        trips = _process_trip(
-            trajectory_time_series.getValuesAsInteger(trip_iri), points)
+        trips = _process_trip(trip_list, points)
     else:
         # entire trajectory considered as a single trip
         trips = [Trip(trajectory=LineString(points), lower_index=0,
-                      upper_index=trajectory_time_series.getTimes().size() - 1)]
+                      upper_index=len(points) - 1)]
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
@@ -135,7 +119,7 @@ def trajectory(calculation_input: CalculationInput):
 
     # create a Java time series object to upload to database
     result_time_series = _create_result_time_series(
-        trips, result_iri=result_iri, time_list=trajectory_time_series.getTimes(), ts_client=ts_client)
+        trips, result_iri=result_iri, time_list=time_list, ts_client=ts_client)
 
     # uploads data to database
     ts_client.add_time_series(result_time_series)
@@ -163,32 +147,6 @@ def _process_trip(trip_index_array, points):
                          trajectory=LineString(points[lowerbound_index:i])))
 
     return trips
-
-
-def _convert_input_time_for_timeseries(time, point_iri: str):
-    from agent.utils.kg_client import kg_client
-    # assumes time is in seconds or milliseconds, if an exception is thrown,
-    # queries the time class from KG (e.g. java.time.Instant) and use the
-    # parse method to parse time into the correct Java object
-    try:
-        # assume epoch seconds
-        return int(time)
-    except (ValueError, TypeError):
-        class_name = kg_client.get_java_time_class(point_iri)
-        time_clazz = baselib_view.java.lang.Class.forName(class_name)
-
-        char_class = baselib_view.java.lang.Class.forName(
-            "java.lang.CharSequence")
-        param_types = jpsBaseLibGW.gateway.new_array(
-            baselib_view.java.lang.Class, 1)
-        param_types[0] = char_class
-
-        java_string = baselib_view.java.lang.String(time)
-        object_class = baselib_view.java.lang.Object
-        args_array = jpsBaseLibGW.gateway.new_array(object_class, 1)
-        args_array[0] = java_string
-
-        return time_clazz.getMethod("parse", param_types).invoke(None, args_array)
 
 
 def _create_result_time_series(trips: list[Trip], result_iri: str, time_list, ts_client: TimeSeriesClient):
@@ -244,3 +202,91 @@ def _get_exposure_result(calculation_input: CalculationInput):
     else:
         raise Exception('Unexpected query result size ' +
                         query_result.toString())
+
+
+def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
+    from agent.utils.kg_client import kg_client
+
+    values_list = [subject]
+    if trip is not None:
+        values_list.append(trip)
+
+    values_clause = " ".join(f"<{s}>" for s in values_list)
+
+    conditions = []
+
+    if lowerbound is not None:
+        if isinstance(lowerbound, JavaObject):
+            condition = f""" ?timestamp >= "{lowerbound.toString()}"^^xsd:dateTime"""
+        else:
+            condition = f"""?time_number >= {lowerbound}"""
+        conditions.append(condition)
+
+    if upperbound is not None:
+        if isinstance(upperbound, JavaObject):
+            condition = f"""?timestamp <= "{upperbound.toString()}"^^xsd:dateTime"""
+        else:
+            condition = f"""?time_number <= {upperbound}"""
+        conditions.append(condition)
+
+    filter_clause = ''
+    if conditions:
+        filter_clause = f"FILTER ({' && '.join(conditions)})"
+
+    query = f"""
+    PREFIX time: <http://www.w3.org/2006/time#>
+
+    SELECT ?timestamp ?time_number ?val ?measure
+    WHERE {{
+        VALUES ?measure {{{values_clause}}}.
+        ?obs <{constants.OBSERVATION_OF}> ?measure;
+            <{constants.HAS_RESULT}>/<{constants.HAS_VALUE}> ?val.
+        OPTIONAL {{?obs time:hasTime/time:inXSDDateTime ?timestamp.}}
+        OPTIONAL {{?obs time:hasTime/time:inTimePosition/time:numericPosition ?time_number.}}
+        {filter_clause}
+    }}
+    ORDER BY ?timestamp ?time_number
+    """
+
+    query_results = kg_client.federate_client.executeQuery(query)
+    query_results_parsed = json.loads(query_results.toString())
+
+    points = []
+    points_time_list = []
+    trip_list = []
+    trip_time_list = []
+    time_string_list_for_java = []
+
+    for entry in query_results_parsed:
+        measure = entry['measure']
+
+        if measure == subject:
+            points.append(wkt.loads(entry['val']))
+
+            if 'timestamp' in entry:
+                points_time_list.append(
+                    datetime.fromisoformat(entry['timestamp']))
+                time_string_list_for_java.append(entry['timestamp'])
+            else:
+                points_time_list.append(float(entry['time_number']))
+
+        else:
+            trip_list.append(entry['val'])
+
+            if 'timestamp' in entry:
+                trip_time_list.append(
+                    datetime.fromisoformat(entry['timestamp']))
+            else:
+                trip_time_list.append(float(entry['time_number']))
+
+    if trip_time_list != points_time_list:
+        raise Exception('Trajectory and trip have different timestamps?')
+
+    if time_string_list_for_java:
+        time_class = kg_client.get_java_time_class(subject)
+        java_time_list = stack_clients_view.TimeSeriesClientFactory.timestampFactory(
+            time_class, time_string_list_for_java)
+    else:
+        java_time_list = points_time_list
+
+    return points, trip_list, java_time_list
