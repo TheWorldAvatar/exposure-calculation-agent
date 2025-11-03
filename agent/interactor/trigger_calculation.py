@@ -62,10 +62,14 @@ def trigger_calculation():
 
         logger.info(
             'Querying subject IRIs with provided SPARQL query template')
-        query_result = json.loads(kg_client.remote_store_client.executeFederatedQuery(
-            [ONTOP_URL, BLAZEGRAPH_URL], query).toString())
+        query_result = json.loads(
+            kg_client.federate_client.executeQuery(query).toString())
 
         logger.info('Received ' + str(len(query_result)) + ' IRIs')
+
+        if len(query_result) == 0:
+            logger.warning('There are no subject IRIs')
+            return
 
         subject_list = []
         for i in query_result:
