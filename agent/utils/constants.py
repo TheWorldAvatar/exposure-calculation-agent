@@ -10,7 +10,7 @@ RASTER_GEOMETRY_COLUMN = 'rast'
 HAS_DISTANCE = PREFIX_EXPOSURE + 'hasDistance'
 HAS_UPPERBOUND = PREFIX_EXPOSURE + 'hasUpperbound'
 HAS_LOWERBOUND = PREFIX_EXPOSURE + 'hasLowerbound'
-HAS_VALUE = PREFIX_EXPOSURE + 'hasValue'
+EXP_HAS_VALUE = PREFIX_EXPOSURE + 'hasValue'
 DCTERM_TITLE = 'http://purl.org/dc/terms/title'
 DATASET_PREDICATE = PREFIX_DCAT + 'dataset'
 SERVES_DATASET = PREFIX_DCAT + 'servesDataset'
@@ -21,6 +21,7 @@ HAS_CALCULATION_METHOD = PREFIX_EXPOSURE + 'hasCalculationMethod'
 HAS_GEOMETRY_COLUMN = PREFIX_EXPOSURE + 'hasGeometryColumn'
 HAS_VALUE_COLUMN = PREFIX_EXPOSURE + 'hasValueColumn'
 HAS_AREA_COLUMN = PREFIX_EXPOSURE + 'hasAreaColumn'
+HAS_YEAR = PREFIX_EXPOSURE + 'hasYear'  # year of exposure dataset
 
 # time series related
 TIMESERIES_NAMESPACE = 'https://www.theworldavatar.com/kg/ontotimeseries/'
@@ -29,7 +30,7 @@ TIMESERIES_TYPE = TIMESERIES_NAMESPACE + 'TimeSeries'
 HAS_TIME_CLASS = TIMESERIES_NAMESPACE + 'hasTimeClass'
 OBSERVATION_OF = TIMESERIES_NAMESPACE + 'observationOf'
 HAS_RESULT = TIMESERIES_NAMESPACE + 'hasResult'
-HAS_VALUE = TIMESERIES_NAMESPACE + 'hasValue'
+TS_HAS_VALUE = TIMESERIES_NAMESPACE + 'hasValue'
 
 # types
 DCAT_DATASET = PREFIX_DCAT + 'Dataset'

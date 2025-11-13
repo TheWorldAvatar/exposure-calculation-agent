@@ -193,7 +193,7 @@ def _get_exposure_result(calculation_input: CalculationInput):
             <{constants.HAS_CALCULATION_METHOD}> <{calculation_input.calculation_metadata.iri}>.
     }}
     """
-    query_result = kg_client.ontop_client.executeQuery(query)
+    query_result = kg_client.federate_client.executeQuery(query)
 
     if query_result.isEmpty():
         return None
@@ -240,7 +240,7 @@ def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
     WHERE {{
         VALUES ?measure {{{values_clause}}}.
         ?obs <{constants.OBSERVATION_OF}> ?measure;
-            <{constants.HAS_RESULT}>/<{constants.HAS_VALUE}> ?val.
+            <{constants.HAS_RESULT}>/<{constants.TS_HAS_VALUE}> ?val.
         OPTIONAL {{?obs time:hasTime/time:inXSDDateTime ?timestamp.}}
         OPTIONAL {{?obs time:hasTime/time:inTimePosition/time:numericPosition ?time_number.}}
         {filter_clause}
@@ -279,7 +279,7 @@ def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
             else:
                 trip_time_list.append(float(entry['time_number']))
 
-    if trip_time_list != points_time_list:
+    if trip is not None and trip_time_list != points_time_list:
         raise Exception('Trajectory and trip have different timestamps?')
 
     if time_string_list_for_java:

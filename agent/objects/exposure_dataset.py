@@ -38,7 +38,7 @@ def get_exposure_dataset(dataset_iri):
     }}
     """
     query_result = json.loads(
-        kg_client.remote_store_client_kb.executeQuery(query).toString())
+        kg_client.federate_client.executeQuery(query).toString())
 
     if len(query_result) != 1:
         raise Exception('Unexpected query result size')

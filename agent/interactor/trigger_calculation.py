@@ -7,7 +7,6 @@ from agent.objects.calculation_metadata import CalculationMetadata
 import agent.utils.constants as constants
 from pathlib import Path
 from rdflib.plugins.sparql.parser import parseQuery
-from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL
 from agent.utils.ts_client import TimeSeriesClient
 import json
 
@@ -104,7 +103,7 @@ def get_dataset_iri(table_name):
             <{constants.DCTERM_TITLE}> "{table_name}".
     }}
     """
-    query_results = kg_client.remote_store_client.executeQuery(query)
+    query_results = kg_client.federate_client.executeQuery(query)
 
     if query_results.length() != 1:
         raise Exception('Failed to get dataset IRI.')

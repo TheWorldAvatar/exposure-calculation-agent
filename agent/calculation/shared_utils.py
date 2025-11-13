@@ -4,7 +4,7 @@ from shapely import wkt
 from shapely.ops import transform
 from pyproj import Transformer
 from agent.utils import constants
-from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL, ONTOP_CLIENT
+from agent.utils.stack_configs import ONTOP_CLIENT
 from twa import agentlogging
 import re
 from agent.utils.postgis_client import postgis_client
@@ -12,6 +12,7 @@ from psycopg2.extras import execute_values
 from agent.utils.stack_gateway import stack_clients_view
 from pathlib import Path
 from agent.utils.constants import METRE_SQUARED
+import json
 
 logger = agentlogging.get_logger('dev')
 
@@ -86,6 +87,8 @@ def _upload_ontop_mapping(calculation_input: CalculationInput):
             <{constants.HAS_CALCULATION_METHOD}> <{calculation_input.calculation_metadata.iri}>.
     }}
     """
+
+    # currently fixed to the default ontop container
     query_result = kg_client.ontop_client.executeQuery(query)
 
     if query_result.isEmpty():
@@ -122,12 +125,12 @@ def get_iri_to_point_dict(subject):
         query_list.append(query)
 
     for query in query_list:
-        query_result = kg_client.remote_store_client.executeFederatedQuery(
-            [BLAZEGRAPH_URL, ONTOP_URL], query)
+        query_result = json.loads(
+            kg_client.federate_client.executeQuery(query).toString())
 
-        for i in range(query_result.length()):
-            sub = query_result.getJSONObject(i).getString('subject')
-            wkt_literal = query_result.getJSONObject(i).getString('wkt')
+        for row in query_result:
+            sub = row['subject']
+            wkt_literal = row['wkt']
 
             # strip RDF literal IRI, i.e. ^^<http://www.opengis.net/ont/geosparql#wktLiteral>
             match = re.match(r'^"(.+)"\^\^<.+>$', wkt_literal)

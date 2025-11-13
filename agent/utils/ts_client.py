@@ -1,7 +1,7 @@
 from twa import agentlogging
 from contextlib import contextmanager
 from agent.utils.stack_gateway import stack_clients_view
-from agent.utils.stack_configs import BLAZEGRAPH_URL, RDB_USER, RDB_URL, RDB_PASSWORD
+from agent.utils.stack_configs import STACK_OUTGOING, RDB_USER, RDB_URL, RDB_PASSWORD
 
 logger = agentlogging.get_logger('dev')
 
@@ -14,11 +14,8 @@ class TimeSeriesClient:
 
     def __init__(self, point_iri=None):
         try:
-            remote_store_client = stack_clients_view.RemoteStoreClient(
-                BLAZEGRAPH_URL, BLAZEGRAPH_URL)
-
             self.tsclient = stack_clients_view.TimeSeriesClientFactory.getInstance(
-                remote_store_client, [point_iri])
+                [STACK_OUTGOING], [point_iri])
 
             self.rdb_remote_client = stack_clients_view.RemoteRDBStoreClient(
                 RDB_URL, RDB_USER, RDB_PASSWORD)
