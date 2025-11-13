@@ -20,11 +20,16 @@ csv_export_bp = Blueprint(
     'csv_export', __name__, url_prefix='/csv_export')
 
 
-@csv_export_bp.route('/', methods=['GET'])
-def non_trajectory():
+@csv_export_bp.route('/greenspace', methods=['GET'])
+def greenspace():
     # IRI(s) of subject to calculate
     subject = request.args.get('subject')
-    exposure_table = request.args.get('exposure_table')
+
+    if subject is not None:
+        subject = [subject]
+
+    exposure_table_list = request.args.getlist('exposure_table')
+    rdf_type_list = request.args.getlist('rdf_type')
 
     # query to obtain subject IRIs
     subject_query_file = request.args.get('subject_query_file')
@@ -32,23 +37,12 @@ def non_trajectory():
     # query for user facing label of subject IRI, e.g. postcode value
     subject_label_query_file = request.args.get('subject_label_query_file')
 
-    # rdf type of calculation type
-    rdf_type = request.args.get('rdf_type')
-
     if subject is not None and subject_query_file is not None:
         raise Exception('Provide subject or subject_query_file, but not both')
 
     # do SPARQL query to obtain a list of subject IRIs
     if subject_query_file is not None:
         subject = _get_subjects(subject_query_file=subject_query_file)
-
-    # get dataset iri
-    exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
-
-    # returns IRI to result
-    logger.info('Querying results')
-    subject_to_result_dict = _get_subject_to_result_dict(
-        subject=subject, exposure=exposure_dataset_iri, calculation_type=rdf_type)
 
     # returns IRI to label
     logger.info('Querying label')
@@ -58,9 +52,20 @@ def non_trajectory():
     logger.info('Getting subject coordinates')
     subject_to_point_dict = _get_subject_to_point_dict(subject=subject)
 
+    # dictionary hierarchy [dataset_year][calculation][subject][distance]
+    overall_result = defaultdict(lambda: defaultdict(dict))
+    for exposure_table in exposure_table_list:
+        exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
+        dataset_year = _get_dataset_year(exposure_dataset_iri)
+        for calculation in rdf_type_list:
+            logger.info('Querying results')
+            subject_to_result_dict = _get_subject_to_result_dict(
+                subject=subject, exposure=exposure_dataset_iri, calculation_type=calculation)
+            overall_result[dataset_year][calculation] = subject_to_result_dict
+
     logger.info('Generating CSV file')
-    csv = _create_csv(subject_to_label_dict=subject_to_label_dict,
-                      subject_to_result_dict=subject_to_result_dict, subject_to_point_dict=subject_to_point_dict)
+    csv = _create_csv(overall_result=overall_result, subject_to_label_dict=subject_to_label_dict,
+                      subject_to_point_dict=subject_to_point_dict)
 
     response = Response(csv.getvalue(), mimetype='text/csv')
     response.headers["Content-Disposition"] = "attachment; filename=data.csv"
@@ -154,24 +159,24 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
 
     for chunk in _chunk_list(subject):
         values = " ".join(f"<{s}>" for s in chunk)
+        # SERVICE is used here to speed up the queries..
         query = f"""
         SELECT ?subject ?value ?distance
         WHERE {{
-            ?calculation a <{calculation_type}>;
-                <{constants.HAS_DISTANCE}> ?distance.
+            SERVICE <{BLAZEGRAPH_URL}> {{?calculation a <{calculation_type}>;
+                <{constants.HAS_DISTANCE}> ?distance.}}
             SERVICE <{ONTOP_URL}> {{VALUES ?subject {{{values}}}
-                ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
-                    <{constants.IS_DERIVED_FROM}> <{exposure}>.
-                ?result <{constants.BELONGS_TO}> ?derivation;
-                    <{constants.HAS_VALUE}> ?value;
-                    <{constants.HAS_CALCULATION_METHOD}> ?calculation.
-            }}
+            ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
+                <{constants.IS_DERIVED_FROM}> <{exposure}>.
+            ?result <{constants.BELONGS_TO}> ?derivation;
+                <{constants.EXP_HAS_VALUE}> ?value;
+                <{constants.HAS_CALCULATION_METHOD}> ?calculation.}}
         }}
         """
 
         # remote store client gives a Java JSONArray
         query_result = json.loads(
-            kg_client.remote_store_client.executeQuery(query).toString())
+            kg_client.federate_client.executeQuery(query).toString())
 
         for item in query_result:
             iri = item['subject']
@@ -226,7 +231,7 @@ def _get_subjects(subject_query_file):
 
     logger.info(
         'Querying subject IRIs with provided SPARQL query template')
-    query_result = kg_client.ontop_client.executeQuery(subject_query)
+    query_result = kg_client.federate_client.executeQuery(subject_query)
 
     logger.info('Received ' + str(query_result.length()) + ' IRIs')
 
@@ -248,8 +253,7 @@ def _get_subject_to_label_dict(subject_label_query_file, subjects):
         query = _insert_values_clause(
             sparql_query=query_template, varname='Feature', uris=chunk)
 
-        query_result = kg_client.remote_store_client.executeFederatedQuery(
-            [ONTOP_URL, BLAZEGRAPH_URL], query)
+        query_result = kg_client.federate_client.executeQuery(query)
 
         for i in range(query_result.length()):
             subject_iri = query_result.getJSONObject(i).getString('Feature')
@@ -269,35 +273,6 @@ def _insert_values_clause(sparql_query, varname, uris):
     where_index = sparql_query.lower().find("where")
     brace_index = sparql_query.find("{", where_index)
     return sparql_query[:brace_index + 1] + "\n  " + values_clause + "\n" + sparql_query[brace_index + 1:]
-
-
-def _create_csv(subject_to_result_dict, subject_to_label_dict, subject_to_point_dict):
-    data = []
-    header = []
-
-    for subject in subject_to_result_dict.keys():
-        label = subject_to_label_dict[subject]
-        value = subject_to_result_dict[subject]
-        lat = subject_to_point_dict[subject].y
-        lng = subject_to_point_dict[subject].x
-
-        row = {'postal_code': label, 'lat': lat, 'lng': lng} | value
-
-        data.append(row)
-
-        extra_keys = set(row.keys()) - set(header)
-        header.extend(extra_keys)
-
-    output = io.StringIO()
-    if data:
-        writer = csv.DictWriter(output, fieldnames=header)
-    else:
-        writer = csv.DictWriter(
-            output, fieldnames=['postal_code', 'lat', 'lng'])
-    writer.writeheader()
-    writer.writerows(data)
-
-    return output
 
 
 def _get_subject_to_point_dict(subject):
@@ -327,11 +302,12 @@ def _get_subject_to_point_dict(subject):
         query_list.append(query)
 
     for query in query_list:
-        query_result = kg_client.ontop_client.executeQuery(query)
+        query_result = json.loads(
+            kg_client.federate_client.executeQuery(query).toString())
 
-        for i in range(query_result.length()):
-            sub = query_result.getJSONObject(i).getString('subject')
-            wkt_literal = query_result.getJSONObject(i).getString('wkt')
+        for row in query_result:
+            sub = row['subject']
+            wkt_literal = row['wkt']
 
             # strip RDF literal IRI, i.e. ^^<http://www.opengis.net/ont/geosparql#wktLiteral>
             match = re.match(r'^"(.+)"\^\^<.+>$', wkt_literal)
@@ -363,6 +339,67 @@ def _get_trip(point_iri: str):
         raise Exception('More than 1 trip instance detected?')
     else:
         return query_results.getJSONObject(0).getString('trip')
+
+
+def _create_csv(overall_result, subject_to_label_dict, subject_to_point_dict):
+
+    subject_to_header = defaultdict(lambda: defaultdict(dict))
+
+    for year in overall_result.keys():
+        calculation_to_subject = overall_result[year]
+
+        for calculation in calculation_to_subject.keys():
+            subject_to_distance = calculation_to_subject[calculation]
+
+            for subject in subject_to_distance.keys():
+                distance_to_value = subject_to_distance[subject]
+
+                for distance in distance_to_value.keys():
+                    value = distance_to_value[distance]
+
+                    header = 'greenspace_' + \
+                        re.findall(r'[^/]+$', calculation)[0] + \
+                        '_' + distance + 'm_' + year
+                    header = header.lower()
+                    subject_to_header[subject][header] = value
+    data = []
+
+    for subject in subject_to_header.keys():
+        label = subject_to_label_dict[subject]
+        value = subject_to_header[subject]
+        lat = subject_to_point_dict[subject].y
+        lng = subject_to_point_dict[subject].x
+
+        data.append({'postal_code': label, 'lat': lat, 'lng': lng} | value)
+
+    output = io.StringIO()
+    if data:
+        writer = csv.DictWriter(output, fieldnames=data[0].keys())
+    else:
+        writer = csv.DictWriter(
+            output, fieldnames=['postal_code', 'lat', 'lng'])
+    writer.writeheader()
+    writer.writerows(data)
+
+    return output
+
+
+def _get_dataset_year(dataset_iri):
+    from agent.utils.kg_client import kg_client
+    # distinct is a fudge due to bug in stack data uploader that uploads duplicates
+    query = f"""
+    PREFIX dcterms: <http://purl.org/dc/terms/>
+    PREFIX dcat: <http://www.w3.org/ns/dcat#>
+
+    SELECT DISTINCT (YEAR(?startdate) AS ?year)
+    WHERE {{
+        <{dataset_iri}> dcterms:temporal/dcat:startDate ?startdate.
+    }}
+    """
+
+    query_results = kg_client.federate_client.executeQuery(query)
+
+    return query_results.getJSONObject(0).getString('year')
 
 
 def _chunk_list(values, chunk_size=1000):
