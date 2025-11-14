@@ -1,8 +1,11 @@
 from agent.utils.stack_gateway import stack_clients_view
 from agent.utils.stack_configs import BLAZEGRAPH_URL, STACK_OUTGOING, ONTOP_URL
+from agent.utils.env_configs import NAMESPACE
 import agent.utils.constants as constants
 from twa import agentlogging
 import time
+import requests
+from urllib.parse import urlsplit
 
 logger = agentlogging.get_logger('dev')
 
@@ -15,9 +18,29 @@ class KgClient():
     def __init__(self):
         self.remote_store_client = RetryRemoteStoreClient(stack_clients_view.RemoteStoreClient(
             STACK_OUTGOING, BLAZEGRAPH_URL))
-        self.federate_client = RetryRemoteStoreClient(
-            stack_clients_view.RemoteStoreClient(STACK_OUTGOING))
         self.ontop_client = stack_clients_view.RemoteStoreClient(ONTOP_URL)
+
+        # check if namespace exists, if not initialise
+        r = requests.head(BLAZEGRAPH_URL)
+
+        if r.status_code != 200:
+            # get the front part of the url
+            parsed_url = urlsplit(BLAZEGRAPH_URL)
+            url = f"{parsed_url.scheme}://{parsed_url.netloc}" + \
+                '/blazegraph/namespace'
+
+            props = (
+                f"com.bigdata.rdf.sail.namespace={NAMESPACE}\n"
+                f"com.bigdata.rdf.store.AbstractTripleStore.quads=false\n"
+                f"com.bigdata.rdf.store.AbstractTripleStore.axiomsClass=com.bigdata.rdf.axioms.NoAxioms\n"
+            )
+
+            r = requests.post(url, data=props, headers={
+                              "Content-Type": "text/plain"})
+
+            if r.status_code not in (200, 201):
+                raise RuntimeError(
+                    f"Failed to create namespace '{NAMESPACE}': {r.status_code} {r.text}")
 
     def get_time_series(self, iri: str):
         query = f"""

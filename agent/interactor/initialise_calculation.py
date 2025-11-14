@@ -32,7 +32,7 @@ def initialise_calculation(calculation_metadata: CalculationMetadata):
 def _get_calculation_iri(calculation_metadata: CalculationMetadata):
     from agent.utils.kg_client import kg_client
     var = 'calc'
-    query_results = kg_client.federate_client.executeQuery(
+    query_results = kg_client.remote_store_client.executeQuery(
         calculation_metadata.get_query(var))
 
     if not query_results.isEmpty():

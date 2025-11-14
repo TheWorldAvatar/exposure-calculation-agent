@@ -66,27 +66,13 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
             execute_values(cur, insert_query, data)
 
     # upload mapping only if it has not been uploaded
-    _upload_ontop_mapping(calculation_input=calculation_input)
+    _upload_ontop_mapping()
 
 
-def _upload_ontop_mapping(calculation_input: CalculationInput):
+def _upload_ontop_mapping():
     from agent.utils.kg_client import kg_client
 
-    # just picking a random subject to check
-    if isinstance(calculation_input.subject, list):
-        subject_to_check = calculation_input.subject[0]
-    else:
-        subject_to_check = calculation_input.subject
-
-    query = f"""
-    SELECT ?derivation
-    WHERE {{
-        ?derivation <{constants.IS_DERIVED_FROM}> <{subject_to_check}>;
-            <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>.
-        ?exposure <{constants.BELONGS_TO}> ?derivation;
-            <{constants.HAS_CALCULATION_METHOD}> <{calculation_input.calculation_metadata.iri}>.
-    }}
-    """
+    query = "SELECT * WHERE {?x ?y ?z} LIMIT 1"
 
     # currently fixed to the default ontop container
     query_result = kg_client.ontop_client.executeQuery(query)
@@ -126,7 +112,7 @@ def get_iri_to_point_dict(subject):
 
     for query in query_list:
         query_result = json.loads(
-            kg_client.federate_client.executeQuery(query).toString())
+            kg_client.remote_store_client.executeQuery(query).toString())
 
         for row in query_result:
             sub = row['subject']

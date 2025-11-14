@@ -62,7 +62,7 @@ def trigger_calculation():
         logger.info(
             'Querying subject IRIs with provided SPARQL query template')
         query_result = json.loads(
-            kg_client.federate_client.executeQuery(query).toString())
+            kg_client.remote_store_client.executeQuery(query).toString())
 
         logger.info('Received ' + str(len(query_result)) + ' IRIs')
 
@@ -103,7 +103,7 @@ def get_dataset_iri(table_name):
             <{constants.DCTERM_TITLE}> "{table_name}".
     }}
     """
-    query_results = kg_client.federate_client.executeQuery(query)
+    query_results = kg_client.remote_store_client.executeQuery(query)
 
     if query_results.length() != 1:
         raise Exception('Failed to get dataset IRI.')

@@ -193,7 +193,7 @@ def _get_exposure_result(calculation_input: CalculationInput):
             <{constants.HAS_CALCULATION_METHOD}> <{calculation_input.calculation_metadata.iri}>.
     }}
     """
-    query_result = kg_client.federate_client.executeQuery(query)
+    query_result = kg_client.remote_store_client.executeQuery(query)
 
     if query_result.isEmpty():
         return None
@@ -248,7 +248,7 @@ def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
     ORDER BY ?timestamp ?time_number
     """
 
-    query_results = kg_client.federate_client.executeQuery(query)
+    query_results = kg_client.remote_store_client.executeQuery(query)
     query_results_parsed = json.loads(query_results.toString())
 
     points = []

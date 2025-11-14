@@ -176,7 +176,7 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
 
         # remote store client gives a Java JSONArray
         query_result = json.loads(
-            kg_client.federate_client.executeQuery(query).toString())
+            kg_client.remote_store_client.executeQuery(query).toString())
 
         for item in query_result:
             iri = item['subject']
@@ -231,7 +231,7 @@ def _get_subjects(subject_query_file):
 
     logger.info(
         'Querying subject IRIs with provided SPARQL query template')
-    query_result = kg_client.federate_client.executeQuery(subject_query)
+    query_result = kg_client.remote_store_client.executeQuery(subject_query)
 
     logger.info('Received ' + str(query_result.length()) + ' IRIs')
 
@@ -253,7 +253,7 @@ def _get_subject_to_label_dict(subject_label_query_file, subjects):
         query = _insert_values_clause(
             sparql_query=query_template, varname='Feature', uris=chunk)
 
-        query_result = kg_client.federate_client.executeQuery(query)
+        query_result = kg_client.remote_store_client.executeQuery(query)
 
         for i in range(query_result.length()):
             subject_iri = query_result.getJSONObject(i).getString('Feature')
@@ -303,7 +303,7 @@ def _get_subject_to_point_dict(subject):
 
     for query in query_list:
         query_result = json.loads(
-            kg_client.federate_client.executeQuery(query).toString())
+            kg_client.remote_store_client.executeQuery(query).toString())
 
         for row in query_result:
             sub = row['subject']
@@ -397,7 +397,7 @@ def _get_dataset_year(dataset_iri):
     }}
     """
 
-    query_results = kg_client.federate_client.executeQuery(query)
+    query_results = kg_client.remote_store_client.executeQuery(query)
 
     return query_results.getJSONObject(0).getString('year')
 
