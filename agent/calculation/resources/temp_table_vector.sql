@@ -1,5 +1,5 @@
 CREATE TEMP TABLE {TEMP_TABLE} AS
-SELECT ST_Transform(wkb_geometry, 3857) AS wkb_geometry
+SELECT ST_Transform({GEOMETRY_COLUMN}, 3857) AS wkb_geometry
 FROM {EXPOSURE_DATASET};
 
 CREATE INDEX {TEMP_TABLE}_geom_gix
