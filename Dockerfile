@@ -1,4 +1,4 @@
-FROM ghcr.io/theworldavatar/stack-client:1.55.0-time-series-for-ontop-SNAPSHOT AS stackclients
+FROM ghcr.io/theworldavatar/stack-client:1.55.0 AS stackclients
 #==================================================================================================
 FROM python:3.13-slim AS base
 # Keeps Python from generating .pyc files in the container

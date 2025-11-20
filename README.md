@@ -79,6 +79,10 @@ curl -X POST http://localhost:3838/exposure-calculation-agent/calculate_exposure
      -d '{"subject": ["http://subject1", "http://subject2"], "exposure": "http://exposure", "calculation": "http://calculation"}'
 ```
 
+### Query endpoint
+
+This agent uses that stack outgoing federation endpoint <https://github.com/TheWorldAvatar/stack/tree/main/stack-manager#outgoing-stack-endpoint>, please make sure this endpoint is set up correctly, e.g. being able to query the necessary data from here.
+
 ### Subject
 
 Agent considers two types of subject for exposure calculations: subject with a fixed geometry and subject with a trajectory.
@@ -151,7 +155,7 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
 
 #### Results for subjects with trajectory
 
-The result instance points to a column in a time series table and it shares the same time series with the trajectory
+The result instance points to a column in a time series table and it shares the same time series with the trajectory. The trajectory should be instantiated using `com.cmclinnovations.stack.clients.timeseries.TimeSeriesRDBClient`, time series data will be queried from the stack outgoing federated endpoint.
 
 ```ttl
 PREFIX derivation: <https://www.theworldavatar.com/kg/ontoderivation/>
@@ -291,6 +295,8 @@ Exposure dataset, needs to have the area and value columns specified
     <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
     <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val".
 ```
+
+#### Trajectory area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`)
 
 ## User facing APIs
 
