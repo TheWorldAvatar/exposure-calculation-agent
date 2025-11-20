@@ -11,6 +11,8 @@ import io
 from shapely import wkt
 from collections import defaultdict
 import json
+from tqdm import tqdm
+import sys
 
 from agent.utils.ts_client import TimeSeriesClient
 
@@ -58,7 +60,8 @@ def greenspace():
         exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
         dataset_year = _get_dataset_year(exposure_dataset_iri)
         for calculation in rdf_type_list:
-            logger.info('Querying results')
+            logger.info(
+                f"""Querying results for calculation: <{calculation}>, dataset: {exposure_table}""")
             subject_to_result_dict = _get_subject_to_result_dict(
                 subject=subject, exposure=exposure_dataset_iri, calculation_type=calculation)
             overall_result[dataset_year][calculation] = subject_to_result_dict
@@ -157,7 +160,7 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
     from agent.utils.kg_client import kg_client
     subject_to_result_dict = defaultdict(lambda: defaultdict(dict))
 
-    for chunk in _chunk_list(subject):
+    for chunk in tqdm(_chunk_list(subject), mininterval=60, ncols=80, file=sys.stdout):
         values = " ".join(f"<{s}>" for s in chunk)
         # SERVICE is used here to speed up the queries..
         query = f"""
