@@ -13,8 +13,7 @@ calculation_blueprint = Blueprint('calculation_blueprint', __name__)
 
 # map of RDF type of calculation to the function to call
 function_map = {
-    constants.TRAJECTORY_COUNT: trajectory,
-    constants.TRAJECTORY_AREA: trajectory,
+    **{t: trajectory for t in constants.TRAJECTORY_TYPES},
     constants.SIMPLE_COUNT: simple_count,
     constants.AREA_WEIGHTED_SUM: area_weighted_sum,
     constants.SIMPLE_AREA: simple_area

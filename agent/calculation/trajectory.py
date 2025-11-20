@@ -14,17 +14,21 @@ import json
 from shapely import wkt
 from datetime import datetime
 from py4j.java_gateway import JavaObject
+from tqdm import tqdm
+import sys
 
 logger = agentlogging.get_logger('dev')
 
 rdf_type_to_sql_path = {
     constants.TRAJECTORY_COUNT: "agent/calculation/resources/count_trajectory.sql",
-    constants.TRAJECTORY_AREA: "agent/calculation/resources/area_trajectory.sql"
+    constants.TRAJECTORY_AREA: "agent/calculation/resources/area_trajectory.sql",
+    constants.TRAJECTORY_AREA_WEIGHTED_SUM: "agent/calculation/resources/area_weighted_sum_trajectory.sql"
 }
 
 rdf_type_to_ts_class = {
     constants.TRAJECTORY_COUNT: stack_clients_view.java.lang.Integer.TYPE,
     constants.TRAJECTORY_AREA: stack_clients_view.java.lang.Double.TYPE,
+    constants.TRAJECTORY_AREA_WEIGHTED_SUM: stack_clients_view.java.lang.Double.TYPE
 }
 
 
@@ -70,24 +74,31 @@ def trajectory(calculation_input: CalculationInput):
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
-    with open("agent/calculation/resources/temp_table_trajectory.sql", "r") as f:
-        temp_table_sql = f.read()
-
     with open(rdf_type_to_sql_path[calculation_input.calculation_metadata.rdf_type], "r") as f:
         calculation_sql = f.read()
+
+    # create temp table for efficiency
+    temp_table = 'temp_table'
+    if calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_AREA_WEIGHTED_SUM:
+        with open("agent/calculation/resources/temp_table_area_weighted_trajectory.sql", "r") as f:
+            temp_table_sql = f.read()
+        temp_table_sql = temp_table_sql.format(
+            TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, PROJ4_TEXT=proj4text, GEOMETRY_COLUMN=exposure_dataset.geometry_column, VALUE_COLUMN=exposure_dataset.value_column, AREA_COLUMN=exposure_dataset.area_column)
+    else:
+        with open("agent/calculation/resources/temp_table_trajectory.sql", "r") as f:
+            temp_table_sql = f.read()
+        temp_table_sql = temp_table_sql.format(
+            TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, PROJ4_TEXT=proj4text, GEOMETRY_COLUMN=exposure_dataset.geometry_column)
 
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
         with conn.cursor() as cur:
-            # create temp table for efficiency
-            temp_table = 'temp_table'
-            temp_table_sql = temp_table_sql.format(
-                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, PROJ4_TEXT=proj4text)
+
             cur.execute(temp_table_sql)
 
             calculation_sql = calculation_sql.format(TEMP_TABLE=temp_table)
 
-            for trip in trips:
+            for trip in tqdm(trips, mininterval=60, ncols=80, file=sys.stdout):
                 # two types of replacement, table name via python, variables via psycopg2,
                 # supposed to be more secure against sql injection like this
                 replacements = {
