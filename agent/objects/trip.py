@@ -1,6 +1,3 @@
-from agent.utils import constants
-
-
 class Trip:
     def __init__(self, upper_index=None, lower_index=None, trajectory=None):
         # positions in the trajectory point array

@@ -77,16 +77,14 @@ def greenspace():
 
 @csv_export_bp.route('/trajectory', methods=['GET'])
 def trajectory():
+    from agent.utils.kg_client import kg_client
     logger.info('Received request to generate CSV file for trajectory')
-    # rdf type of calculation type
-    rdf_type = request.args.get('rdf_type')
 
     # IRI(s) of subject to calculate
     subject = request.args.get('subject')
-    exposure_table = request.args.get('exposure_table')
 
-    # get dataset iri
-    exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
+    exposure_table_list = request.args.getlist('exposure_table')
+    rdf_type_list = request.args.getlist('rdf_type')
 
     trip_iri = _get_trip(subject)
 
@@ -94,54 +92,52 @@ def trajectory():
     upperbound = request.args.get('upperbound')
     lowerbound = request.args.get('lowerbound')
 
-    # not general, assumes epoch seconds
-    if upperbound is not None:
-        upperbound = int(upperbound)
-
-    if lowerbound is not None:
-        lowerbound = int(lowerbound)
-
-    logger.info('Querying results')
-    distance_to_result_dict = _get_distance_to_result_dict(
-        subject=subject, exposure=exposure_dataset_iri, calculation_type=rdf_type)
-
-    data_iri_list = [subject] + list(distance_to_result_dict.values())
+    data_iri_list_to_query = [subject]
     if trip_iri is not None:
-        data_iri_list.append(trip_iri)
+        data_iri_list_to_query.append(trip_iri)
 
-    ts_client = TimeSeriesClient(subject)
+    # dictionary hierarchy [dataset_year][calculation][distance] = result_iri
+    overall_result = defaultdict(lambda: defaultdict(dict))
+    for exposure_table in exposure_table_list:
+        exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
+        dataset_year = _get_dataset_year(exposure_dataset_iri)
+        for calculation in rdf_type_list:
+            logger.info(
+                f"""Querying results for calculation: <{calculation}>, dataset: {exposure_table}""")
+            distance_to_result_dict = _get_distance_to_result_dict(
+                subject=subject, exposure=exposure_dataset_iri, calculation_type=calculation)
+            overall_result[dataset_year][calculation] = distance_to_result_dict
+            data_iri_list_to_query.extend(distance_to_result_dict.values())
 
-    time_series = ts_client.get_time_series(
-        data_iri_list=data_iri_list, lowerbound=lowerbound, upperbound=upperbound)
-
-    postgis_points = time_series.getValuesAsPoint(subject)
+    logger.info('Querying time series')
+    time_series = kg_client.get_time_series_data(
+        data_iri_list_to_query, lowerbound, upperbound)
+    points = [wkt.loads(s) for s in time_series.get_value_list(subject)]
 
     lat_list = []
     lng_list = []
 
-    for point in postgis_points:
-        lat_list.append(point.getY())
-        lng_list.append(point.getX())
+    for point in points:
+        lat_list.append(point.y)
+        lng_list.append(point.x)
 
-    java_time_list = time_series.getTimes()
-    time_list = [java_time_list.get(i) for i in range(java_time_list.size())]
+    time_list = time_series.get_timestamp_java(subject)
 
     data_to_write = [time_list, lat_list, lng_list]
     headers = ['time', 'lat', 'lng']
 
     if trip_iri is not None:
-        java_trip_list = time_series.getValuesAsInteger(trip_iri)
-        trip_list = [java_trip_list.get(i)
-                     for i in range(java_trip_list.size())]
-        data_to_write.append(trip_list)
+        data_to_write.append(time_series.get_value_list(trip_iri))
         headers.append('trip index')
 
-    for distance, result in distance_to_result_dict.items():
-        java_result_list = time_series.getValuesAsDouble(result)
-        result_list = [java_result_list.get(i)
-                       for i in range(java_result_list.size())]
-        data_to_write.append(result_list)
-        headers.append(str(distance))
+    for year in overall_result.keys():
+        for calculation in overall_result[year].keys():
+            for distance in overall_result[year][calculation].keys():
+                result_iri = overall_result[year][calculation][distance]
+                result_list = time_series.get_value_list(result_iri)
+                data_to_write.append(result_list)
+                headers.append(
+                    str(year) + '_' + re.findall(r'[^/]+$', calculation)[0] + '_' + str(distance))
 
     rows = zip(*data_to_write)
 
@@ -198,12 +194,10 @@ def _get_distance_to_result_dict(subject, exposure, calculation_type):
     WHERE {{
         ?calculation a <{calculation_type}>;
             <{constants.HAS_DISTANCE}> ?distance.
-        SERVICE <{ONTOP_URL}> {{
-            ?derivation <{constants.IS_DERIVED_FROM}> <{subject}>;
-                <{constants.IS_DERIVED_FROM}> <{exposure}>.
-            ?result <{constants.BELONGS_TO}> ?derivation;
-                <{constants.HAS_CALCULATION_METHOD}> ?calculation.
-        }}
+        ?derivation <{constants.IS_DERIVED_FROM}> <{subject}>;
+            <{constants.IS_DERIVED_FROM}> <{exposure}>.
+        ?result <{constants.BELONGS_TO}> ?derivation;
+            <{constants.HAS_CALCULATION_METHOD}> ?calculation.
     }}
     """
 

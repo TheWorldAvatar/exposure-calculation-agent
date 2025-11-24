@@ -217,87 +217,17 @@ def _get_exposure_result(calculation_input: CalculationInput):
 
 def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
     from agent.utils.kg_client import kg_client
-
     values_list = [subject]
     if trip is not None:
         values_list.append(trip)
+    time_series = kg_client.get_time_series_data(
+        values_list, lowerbound, upperbound)
 
-    values_clause = " ".join(f"<{s}>" for s in values_list)
+    points = [wkt.loads(s) for s in time_series.get_value_list(subject)]
 
-    conditions = []
-
-    if lowerbound is not None:
-        if isinstance(lowerbound, JavaObject):
-            condition = f""" ?timestamp >= "{lowerbound.toString()}"^^xsd:dateTime"""
-        else:
-            condition = f"""?time_number >= {lowerbound}"""
-        conditions.append(condition)
-
-    if upperbound is not None:
-        if isinstance(upperbound, JavaObject):
-            condition = f"""?timestamp <= "{upperbound.toString()}"^^xsd:dateTime"""
-        else:
-            condition = f"""?time_number <= {upperbound}"""
-        conditions.append(condition)
-
-    filter_clause = ''
-    if conditions:
-        filter_clause = f"FILTER ({' && '.join(conditions)})"
-
-    query = f"""
-    PREFIX time: <http://www.w3.org/2006/time#>
-
-    SELECT ?timestamp ?time_number ?val ?measure
-    WHERE {{
-        VALUES ?measure {{{values_clause}}}.
-        ?obs <{constants.OBSERVATION_OF}> ?measure;
-            <{constants.HAS_RESULT}>/<{constants.TS_HAS_VALUE}> ?val.
-        OPTIONAL {{?obs time:hasTime/time:inXSDDateTime ?timestamp.}}
-        OPTIONAL {{?obs time:hasTime/time:inTimePosition/time:numericPosition ?time_number.}}
-        {filter_clause}
-    }}
-    ORDER BY ?timestamp ?time_number
-    """
-
-    query_results = kg_client.remote_store_client.executeQuery(query)
-    query_results_parsed = json.loads(query_results.toString())
-
-    points = []
-    points_time_list = []
-    trip_list = []
-    trip_time_list = []
-    time_string_list_for_java = []
-
-    for entry in query_results_parsed:
-        measure = entry['measure']
-
-        if measure == subject:
-            points.append(wkt.loads(entry['val']))
-
-            if 'timestamp' in entry:
-                points_time_list.append(
-                    datetime.fromisoformat(entry['timestamp']))
-                time_string_list_for_java.append(entry['timestamp'])
-            else:
-                points_time_list.append(float(entry['time_number']))
-
-        else:
-            trip_list.append(entry['val'])
-
-            if 'timestamp' in entry:
-                trip_time_list.append(
-                    datetime.fromisoformat(entry['timestamp']))
-            else:
-                trip_time_list.append(float(entry['time_number']))
-
-    if trip is not None and trip_time_list != points_time_list:
-        raise Exception('Trajectory and trip have different timestamps?')
-
-    if time_string_list_for_java:
-        time_class = kg_client.get_java_time_class(subject)
-        java_time_list = stack_clients_view.TimeSeriesClientFactory.timestampFactory(
-            time_class, time_string_list_for_java)
+    if trip is not None:
+        trip_list = time_series.get_value_list(trip)
     else:
-        java_time_list = points_time_list
+        trip_list = []
 
-    return points, trip_list, java_time_list
+    return points, trip_list, time_series.get_timestamp_java(subject)
