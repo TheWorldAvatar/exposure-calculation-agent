@@ -197,6 +197,7 @@ Supported calculation types:
 3. `<https://www.theworldavatar.com/kg/ontoexposure/Count>`
 4. `<https://www.theworldavatar.com/kg/ontoexposure/Area>`
 5. `<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`
+6. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`
 
 Permissible metadata depends on the calculation type. A result instance is instantiated for each subject - exposure - calculation combination.
 
@@ -271,6 +272,8 @@ Exposure: A polygon dataset
 
 Overview: Applies a buffer around a subject and find the intersected elements in the exposure dataset. Then sums up the product of area and value of each intersected polygon. The exposure dataset is expected to be a vector dataset converted from a raster dataset via ST_PixelAsPolygons. For efficiency, the area of each polygon is precalculated, if a polygon is intersected partially, the whole area will be taken into account. If the polygons are small (converted from pixel), the error from this approximation should be small.
 
+[SQL query template here](agent/calculation/resources/area_weighted_sum.sql).
+
 The following shows the equation:
 
 $\sum_{i=1}^N (A_i \times x_i)$
@@ -299,6 +302,21 @@ Exposure dataset, needs to have the area and value columns specified
 #### Trajectory area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`)
 
 Similar to `<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`, but for trajectories. Requirements are the same, except that the subject should be a point time series. [SQL query template here](agent/calculation/resources/area_weighted_sum_trajectory.sql).
+
+Calculation instance:
+
+```ttl
+<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
+```
+
+Exposure dataset, needs to have the area and value columns specified
+
+```ttl
+<http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
+    <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val".
+```
 
 ## User facing APIs
 
