@@ -1,4 +1,9 @@
 class TimeSeries:
+    """
+    This class is used to store time series values queried from the KG
+    The key to the dictionaries should be the IRI of the instance containing time series data
+    """
+
     def __init__(self):
         self.timestamp_java_list: dict[str, list] = {}
         self.values: dict[str, list] = {}
