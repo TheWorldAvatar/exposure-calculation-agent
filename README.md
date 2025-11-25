@@ -170,7 +170,7 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
     derivation:belongsTo <http://derivation>.
 ```
 
-If no trip data is present, the entire trajectory is considered as a single trip and a single value is calculated. If trip data is present, a value is calculated for each trip. A new column is added for each subject - exposure - calculation combination. Final results will look something like the following for data with trips. Note that the same value is repeated over each row within a trip.
+If no trip data is present, the entire trajectory is considered as a single trip and a single value is calculated. If trip data is present, a value is calculated for each trip. A new result instance is added for each subject - exposure - calculation combination. Final results will look something like the following for data with trips. Note that the same value is repeated over each row within a trip.
 
 | Time |     Point     | Trip | Result A | Result B |
 |------|---------------|------|----------|----------|
@@ -297,6 +297,8 @@ Exposure dataset, needs to have the area and value columns specified
 ```
 
 #### Trajectory area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`)
+
+Similar to `<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`, but for trajectories. Requirements are the same, except that the subject should be a point time series. [SQL query template here](agent/calculation/resources/area_weighted_sum_trajectory.sql).
 
 ## User facing APIs
 
