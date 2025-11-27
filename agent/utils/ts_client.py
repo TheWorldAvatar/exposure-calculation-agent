@@ -1,7 +1,7 @@
 from twa import agentlogging
 from contextlib import contextmanager
-from agent.utils.baselib_gateway import baselib_view
-from agent.utils.stack_configs import BLAZEGRAPH_URL, RDB_USER, RDB_URL, RDB_PASSWORD
+from agent.utils.stack_gateway import stack_clients_view
+from agent.utils.stack_configs import STACK_OUTGOING, RDB_USER, RDB_URL, RDB_PASSWORD
 
 logger = agentlogging.get_logger('dev')
 
@@ -14,19 +14,10 @@ class TimeSeriesClient:
 
     def __init__(self, point_iri=None):
         try:
-            remote_store_client = baselib_view.RemoteStoreClient(
-                BLAZEGRAPH_URL, BLAZEGRAPH_URL)
+            self.tsclient = stack_clients_view.TimeSeriesClientFactory.getInstance(
+                [STACK_OUTGOING], [point_iri])
 
-            if point_iri is None:
-                ts_rdb_client = baselib_view.TimeSeriesRDBClientWithReducedTables(
-                    baselib_view.java.lang.Class.forName('java.lang.Long'))
-                self.tsclient = baselib_view.TimeSeriesClient(
-                    remote_store_client, ts_rdb_client)
-            else:
-                self.tsclient = baselib_view.TimeSeriesClientFactory.getInstance(
-                    remote_store_client, [point_iri])
-
-            self.rdb_remote_client = baselib_view.RemoteRDBStoreClient(
+            self.rdb_remote_client = stack_clients_view.RemoteRDBStoreClient(
                 RDB_URL, RDB_USER, RDB_PASSWORD)
         except Exception as ex:
             logger.error("Unable to initialise TimeSeriesClient.")
@@ -58,7 +49,8 @@ class TimeSeriesClient:
             values (list): List of list of values per dataIRI     
         """
         try:
-            timeseries = baselib_view.TimeSeries(times, data_iri_list, values)
+            timeseries = stack_clients_view.TimeSeries(
+                times, data_iri_list, values)
         except Exception as ex:
             logger.error("Unable to create TimeSeries object.")
             raise TimeSeriesException("Unable to create timeseries.") from ex
@@ -69,12 +61,6 @@ class TimeSeriesClient:
         with self.connect() as conn:
             self.tsclient.addTimeSeriesData(time_series, conn)
         logger.info('Uploaded time series data')
-
-    def get_time_series(self, data_iri_list: list, lowerbound=None, upperbound=None):
-        with self.connect() as conn:
-            time_series = self.tsclient.getTimeSeriesWithinBounds(
-                data_iri_list, lowerbound, upperbound, conn)
-        return time_series
 
     def add_columns(self, time_series_iri, data_iri: list, class_list: list):
         with self.connect() as conn:

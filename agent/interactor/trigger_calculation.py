@@ -7,7 +7,6 @@ from agent.objects.calculation_metadata import CalculationMetadata
 import agent.utils.constants as constants
 from pathlib import Path
 from rdflib.plugins.sparql.parser import parseQuery
-from agent.utils.stack_configs import BLAZEGRAPH_URL, ONTOP_URL
 from agent.utils.ts_client import TimeSeriesClient
 import json
 
@@ -62,10 +61,14 @@ def trigger_calculation():
 
         logger.info(
             'Querying subject IRIs with provided SPARQL query template')
-        query_result = json.loads(kg_client.remote_store_client.executeFederatedQuery(
-            [ONTOP_URL, BLAZEGRAPH_URL], query).toString())
+        query_result = json.loads(
+            kg_client.remote_store_client.executeQuery(query).toString())
 
         logger.info('Received ' + str(len(query_result)) + ' IRIs')
+
+        if len(query_result) == 0:
+            logger.warning('There are no subject IRIs')
+            return
 
         subject_list = []
         for i in query_result:

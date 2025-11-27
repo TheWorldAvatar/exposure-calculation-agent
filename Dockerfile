@@ -1,6 +1,6 @@
-FROM ghcr.io/theworldavatar/stack-client:1.47.0 AS stackclients
+FROM ghcr.io/theworldavatar/stack-client:1.55.0 AS stackclients
 #==================================================================================================
-FROM python:3.13.3-slim AS base
+FROM python:3.13-slim AS base
 # Keeps Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE=1
 
@@ -11,7 +11,7 @@ ENV PYTHONUNBUFFERED=1
 RUN python -m pip install --upgrade pip && \
     python -m pip install gunicorn && \
     apt update &&\
-    apt install -y openjdk-17-jre-headless git &&\
+    apt install -y openjdk-21-jre-headless git &&\
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Set the default working directory, then copy the Python source code into it

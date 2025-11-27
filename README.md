@@ -79,6 +79,10 @@ curl -X POST http://localhost:3838/exposure-calculation-agent/calculate_exposure
      -d '{"subject": ["http://subject1", "http://subject2"], "exposure": "http://exposure", "calculation": "http://calculation"}'
 ```
 
+### Query endpoint
+
+This agent uses that stack outgoing federation endpoint <https://github.com/TheWorldAvatar/stack/tree/main/stack-manager#outgoing-stack-endpoint>, please make sure this endpoint is set up correctly, e.g. being able to query the necessary data from here.
+
 ### Subject
 
 Agent considers two types of subject for exposure calculations: subject with a fixed geometry and subject with a trajectory.
@@ -151,7 +155,7 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
 
 #### Results for subjects with trajectory
 
-The result instance points to a column in a time series table and it shares the same time series with the trajectory
+The result instance points to a column in a time series table and it shares the same time series with the trajectory. The trajectory should be instantiated using `com.cmclinnovations.stack.clients.timeseries.TimeSeriesRDBClient`, time series data will be queried from the stack outgoing federated endpoint.
 
 ```ttl
 PREFIX derivation: <https://www.theworldavatar.com/kg/ontoderivation/>
@@ -166,7 +170,7 @@ PREFIX exposure:   <https://www.theworldavatar.com/kg/ontoexposure/>
     derivation:belongsTo <http://derivation>.
 ```
 
-If no trip data is present, the entire trajectory is considered as a single trip and a single value is calculated. If trip data is present, a value is calculated for each trip. A new column is added for each subject - exposure - calculation combination. Final results will look something like the following for data with trips. Note that the same value is repeated over each row within a trip.
+If no trip data is present, the entire trajectory is considered as a single trip and a single value is calculated. If trip data is present, a value is calculated for each trip. A new result instance is added for each subject - exposure - calculation combination. Final results will look something like the following for data with trips. Note that the same value is repeated over each row within a trip.
 
 | Time |     Point     | Trip | Result A | Result B |
 |------|---------------|------|----------|----------|
@@ -193,6 +197,7 @@ Supported calculation types:
 3. `<https://www.theworldavatar.com/kg/ontoexposure/Count>`
 4. `<https://www.theworldavatar.com/kg/ontoexposure/Area>`
 5. `<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`
+6. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`
 
 Permissible metadata depends on the calculation type. A result instance is instantiated for each subject - exposure - calculation combination.
 
@@ -267,6 +272,8 @@ Exposure: A polygon dataset
 
 Overview: Applies a buffer around a subject and find the intersected elements in the exposure dataset. Then sums up the product of area and value of each intersected polygon. The exposure dataset is expected to be a vector dataset converted from a raster dataset via ST_PixelAsPolygons. For efficiency, the area of each polygon is precalculated, if a polygon is intersected partially, the whole area will be taken into account. If the polygons are small (converted from pixel), the error from this approximation should be small.
 
+[SQL query template here](agent/calculation/resources/area_weighted_sum.sql).
+
 The following shows the equation:
 
 $\sum_{i=1}^N (A_i \times x_i)$
@@ -281,6 +288,25 @@ Calculation instance:
 
 ```ttl
 <http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
+```
+
+Exposure dataset, needs to have the area and value columns specified
+
+```ttl
+<http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
+    <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val".
+```
+
+#### Trajectory area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`)
+
+Similar to `<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`, but for trajectories. Requirements are the same, except that the subject should be a point time series. [SQL query template here](agent/calculation/resources/area_weighted_sum_trajectory.sql).
+
+Calculation instance:
+
+```ttl
+<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
 ```
 

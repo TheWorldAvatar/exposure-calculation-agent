@@ -28,7 +28,7 @@ def simple_count(calculation_input: CalculationInput):
             # create temp table for efficiency
             temp_table = 'temp_table'
             temp_table_sql = temp_table_sql.format(
-                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name)
+                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, GEOMETRY_COLUMN=exposure_dataset.geometry_column)
             cur.execute(temp_table_sql)
 
             count_sql = count_sql.format(TEMP_TABLE=temp_table)
