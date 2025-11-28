@@ -238,6 +238,12 @@ The instance of this calculation type:
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
 ```
 
+Exposure dataset, optional to specify a custom geometry column name, if it is not present, it will default to 'wkb_geometry'.
+
+```ttl
+<http://exposure> <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
+```
+
 #### Trajectory area (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`)
 
 Overview: Calculates intersected area between the buffered trajectory and specified dataset. [SQL query template here](./agent/calculation/resources/area_trajectory.sql)
@@ -255,6 +261,12 @@ Exposure: A polygon dataset
 
 Distance is mandatory, whereas upper and lower bounds are optional.
 
+Exposure dataset, optional to specify a custom geometry column name, if it is not present, it will default to 'wkb_geometry'.
+
+```ttl
+<http://exposure> <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
+```
+
 #### Area (`<https://www.theworldavatar.com/kg/ontoexposure/Area>`)
 
 Overview: Calculates intersected area between a buffered point and polygons in a specified dataset. [SQL query template here](./agent/calculation/resources/area.sql)
@@ -266,6 +278,12 @@ Exposure: A polygon dataset
 ```ttl
 <http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/Area>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
+```
+
+Exposure dataset, optional to specify a custom geometry column name, if it is not present, it will default to 'wkb_geometry'.
+
+```ttl
+<http://exposure> <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
 ```
 
 #### Area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`)
@@ -291,12 +309,13 @@ Calculation instance:
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
 ```
 
-Exposure dataset, needs to have the area and value columns specified
+Exposure dataset, needs to have the area and value columns specified, if geometry column is not specified, it will default to 'wkb_geometry'.
 
 ```ttl
 <http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
-    <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val".
+    <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val";
+    <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
 ```
 
 #### Trajectory area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`)
@@ -310,12 +329,13 @@ Calculation instance:
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
 ```
 
-Exposure dataset, needs to have the area and value columns specified
+Exposure dataset, needs to have the area and value columns specified, if geometry column is not specified, it will default to 'wkb_geometry'.
 
 ```ttl
 <http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
-    <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val".
+    <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val";
+    <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
 ```
 
 ## User facing APIs
