@@ -1,6 +1,6 @@
 services:
   exposure-calculation-agent:
-    image: ghcr.io/theworldavatar/exposure-calculation-agent:2.0.0
+    image: ghcr.io/theworldavatar/exposure-calculation-agent:2.0.1
     build:
       context: .
       target: production

@@ -53,6 +53,8 @@ def get_exposure_dataset(dataset_iri):
 
     if 'geometry_column' in query_result[0]:
         exposure_dataset.geometry_column = query_result[0]['geometry_column']
+    else:
+        exposure_dataset.geometry_column = 'wkb_geometry'
 
     if 'value_column' in query_result[0]:
         exposure_dataset.value_column = query_result[0]['value_column']
