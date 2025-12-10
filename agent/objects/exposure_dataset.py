@@ -14,12 +14,14 @@ class ExposureDataset:
     value_column: Optional[str] = None
     # used for area weighted calculation, pre-calculated area of a polygon (converted from pixel)
     area_column: Optional[str] = None
+    # used for time filtering
+    iri_column: Optional[str] = None
 
 
 def get_exposure_dataset(dataset_iri):
     from agent.utils.kg_client import kg_client
     query = f"""
-    SELECT ?url ?table_name ?geometry_column ?value_column ?area_column
+    SELECT ?url ?table_name ?geometry_column ?value_column ?area_column ?iri_column
     WHERE {{
         ?catalog <{constants.DATASET_PREDICATE}> <{dataset_iri}>.
         <{dataset_iri}> <{constants.DCTERM_TITLE}> ?table_name.
@@ -31,6 +33,9 @@ def get_exposure_dataset(dataset_iri):
         }}
         OPTIONAL {{
             <{dataset_iri}> <{constants.HAS_AREA_COLUMN}> ?area_column.
+        }}
+        OPTIONAL {{
+            <{dataset_iri}> <{constants.HAS_IRI_COLUMN}> ?iri_column.
         }}
         ?postgis a <{constants.POSTGIS_SERVICE}>;
             <{constants.SERVES_DATASET}> ?catalog;
@@ -54,6 +59,7 @@ def get_exposure_dataset(dataset_iri):
     if 'geometry_column' in query_result[0]:
         exposure_dataset.geometry_column = query_result[0]['geometry_column']
     else:
+        # default name provided by gdal
         exposure_dataset.geometry_column = 'wkb_geometry'
 
     if 'value_column' in query_result[0]:
@@ -61,5 +67,8 @@ def get_exposure_dataset(dataset_iri):
 
     if 'area_column' in query_result[0]:
         exposure_dataset.area_column = query_result[0]['area_column']
+
+    if 'iri_column' in query_result[0]:
+        exposure_dataset.iri_column = query_result[0]['iri_column']
 
     return exposure_dataset
