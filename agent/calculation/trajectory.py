@@ -15,7 +15,7 @@ from shapely import wkt
 from tqdm import tqdm
 import sys
 import json
-from datetime import datetime
+from datetime import datetime, date, time
 
 logger = agentlogging.get_logger('dev')
 
@@ -149,13 +149,13 @@ def trajectory(calculation_input: CalculationInput):
     if calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_TIME_FILTER_COUNT:
         timezone = _get_time_zone(centroid)
         _process_time_filter(trips, timezone)
-    else:
-        # create a Java time series object to upload to database
-        result_time_series = _create_result_time_series(
-            trips, result_iri=result_iri, time_list=java_time_list, ts_client=ts_client)
 
-        # uploads data to database
-        ts_client.add_time_series(result_time_series)
+    # create a Java time series object to upload to database
+    result_time_series = _create_result_time_series(
+        trips, result_iri=result_iri, time_list=java_time_list, ts_client=ts_client)
+
+    # uploads data to database
+    ts_client.add_time_series(result_time_series)
 
     return 'Trajectory count complete', 200
 
@@ -320,8 +320,7 @@ def _process_time_filter(trips: list[Trip], timezone: str):
 
     _set_business_start_end(business_establishments)
     _set_schedules(business_establishments)
-
-    business_establishments
+    _calculate_with_time_filter(trips, timezone, business_establishments)
 
 
 def _set_business_start_end(business_establishments: dict[str, BusinessEstablishment]):
@@ -339,10 +338,15 @@ def _set_business_start_end(business_establishments: dict[str, BusinessEstablish
 
     # please refer to the template for the variable names
     for entry in query_result:
-        start = datetime.fromisoformat(entry['start_time'])
-        end = datetime.fromisoformat(entry['end_time'])
-        business_establishments[entry[varname]
-                                ].add_business_start_and_end_tuple((start, end))
+        # support both date and timestamp
+        try:
+            start = datetime.fromisoformat(entry['start_time'])
+            end = datetime.fromisoformat(entry['end_time'])
+        except Exception():
+            start = date.fromisoformat(entry['start_time'])
+            end = date.fromisoformat(entry['end_time'])
+        business_establishments[entry[varname]].add_business_start_and_end(
+            business_start=start, business_end=end)
 
 
 def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
@@ -371,10 +375,10 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
         feature = entry['feature']
         schedule = entry['schedule']
         day = entry['reccurent_day']
-        schedule_start_date = entry['schedule_start_date']
-        schedule_end_date = entry['schedule_end_date']
-        start_time = entry['start_time']
-        end_time = entry['end_time']
+        schedule_start_date = date.fromisoformat(entry['schedule_start_date'])
+        schedule_end_date = date.fromisoformat(entry['schedule_end_date'])
+        start_time = time.fromisoformat(entry['start_time'])
+        end_time = time.fromisoformat(entry['end_time'])
 
         if feature in feature_to_schedule_dict:
             if schedule not in feature_to_schedule_dict[feature]:
@@ -407,3 +411,18 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
                                    start_time=start_time, end_time=end_time)
 
             business_establishments[feature].add_schedule(be_schedule)
+
+
+def _calculate_with_time_filter(trips: list[Trip], timezone: str, business_establishments: dict[str, BusinessEstablishment]):
+    for trip in trips:
+        number = 0
+        for iri in trip.iri_list:
+            business_establishment = business_establishments[iri]
+
+            if business_establishment.business_is_open(
+                    lowerbound_time=trip.lowerbound_time,
+                    upperbound_time=trip.upperbound_time,
+                    timezone=timezone):
+                number += 1
+
+        trip.set_exposure_result(number)
