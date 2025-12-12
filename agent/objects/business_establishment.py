@@ -32,10 +32,9 @@ class BusinessEstablishment():
             else:
                 raise Exception('Unsupported type for business start and end')
 
-    def business_is_open(self, lowerbound_time: datetime, upperbound_time: datetime, timezone: str):
-        tz = ZoneInfo(timezone)
-        start_timestamp = lowerbound_time.astimezone(tz)
-        end_timestamp = upperbound_time.astimezone(tz)
+    def business_is_open(self, lowerbound_time: datetime, upperbound_time: datetime, timezone: ZoneInfo):
+        start_timestamp = lowerbound_time.astimezone(timezone)
+        end_timestamp = upperbound_time.astimezone(timezone)
 
         for schedule in self.schedules:
             # check if trip is within validity of schedule, then obtain opening hours of that specific day

@@ -13,5 +13,5 @@ WHERE {{
             cmns-dt:hasStartDate           ?schedule_start_date .
 
   ?timeperiod cmns-dt:hasEndTime/cmns-dt:hasTimeValue   ?end_time .
-  ?timeperiod cmns-dt:hasStart/cmns-dt:hasTimeValue      ?start_time .
+  ?timeperiod cmns-dt:hasStartTime/cmns-dt:hasTimeValue      ?start_time .
 }}

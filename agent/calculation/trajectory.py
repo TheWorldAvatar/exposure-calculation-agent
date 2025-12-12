@@ -1,6 +1,7 @@
+from zoneinfo import ZoneInfo
 from agent.calculation.shared_utils import instantiate_result_ontop
 from agent.objects.business_establishment import BusinessEstablishment, Schedule
-from agent.objects.exposure_dataset import get_exposure_dataset
+from agent.objects.exposure_dataset import ExposureDataset, get_exposure_dataset
 from agent.utils import constants
 from agent.utils.ts_client import TimeSeriesClient
 from agent.calculation.calculation_input import CalculationInput
@@ -148,7 +149,7 @@ def trajectory(calculation_input: CalculationInput):
 
     if calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_TIME_FILTER_COUNT:
         timezone = _get_time_zone(centroid)
-        _process_time_filter(trips, timezone)
+        _process_time_filter(trips, timezone, exposure_dataset)
 
     # create a Java time series object to upload to database
     result_time_series = _create_result_time_series(
@@ -307,46 +308,35 @@ def _get_time_zone(centroid: Point):
         raise Exception('Unexpected query size while getting time zone')
 
 
-def _process_time_filter(trips: list[Trip], timezone: str):
+def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: ExposureDataset):
+    # check if trips fall into range of datasets
+    tz = ZoneInfo(timezone)
+    trips_to_consider = []
+    for trip in trips:
+        if exposure_dataset.start_date <= trip.lowerbound_time.astimezone(tz).date() <= trip.upperbound_time.astimezone(tz).date() <= exposure_dataset.end_date:
+            trips_to_consider.append(trip)
+
+    # there are no valid trips
+    if not trips_to_consider:
+        return
+
     # collect a flattened iri list of all intersected establishments
     iri_list = []
-    for trip in trips:
+    for trip in trips_to_consider:
         iri_list += trip.iri_list
+
+    # there are no features to consider
+    if not iri_list:
+        return
 
     # remove duplicates
     iri_set = set(iri_list)
     business_establishments = {
         iri: BusinessEstablishment(iri) for iri in iri_set}
 
-    _set_business_start_end(business_establishments)
     _set_schedules(business_establishments)
-    _calculate_with_time_filter(trips, timezone, business_establishments)
-
-
-def _set_business_start_end(business_establishments: dict[str, BusinessEstablishment]):
-    from agent.utils.kg_client import kg_client
-    varname = 'feature'
-    values = " ".join(f"<{iri}>" for iri in business_establishments)
-    values_clause = f"VALUES ?{varname} {{ {values} }}"
-
-    with open("agent/calculation/resources/business_start_end.sparql", "r") as f:
-        business_start_end_sparql = f.read().format(
-            VALUES_CLAUSE=values_clause, VARNAME=varname)
-
-    query_result = json.loads(kg_client.remote_store_client.executeQuery(
-        business_start_end_sparql).toString())
-
-    # please refer to the template for the variable names
-    for entry in query_result:
-        # support both date and timestamp
-        try:
-            start = datetime.fromisoformat(entry['start_time'])
-            end = datetime.fromisoformat(entry['end_time'])
-        except Exception():
-            start = date.fromisoformat(entry['start_time'])
-            end = date.fromisoformat(entry['end_time'])
-        business_establishments[entry[varname]].add_business_start_and_end(
-            business_start=start, business_end=end)
+    _calculate_with_time_filter(
+        trips_to_consider, tz, business_establishments)
 
 
 def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
@@ -375,10 +365,16 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
         feature = entry['feature']
         schedule = entry['schedule']
         day = entry['reccurent_day']
-        schedule_start_date = date.fromisoformat(entry['schedule_start_date'])
-        schedule_end_date = date.fromisoformat(entry['schedule_end_date'])
-        start_time = time.fromisoformat(entry['start_time'])
-        end_time = time.fromisoformat(entry['end_time'])
+        try:
+            schedule_start_date = date.fromisoformat(
+                entry['schedule_start_date'])
+            schedule_end_date = date.fromisoformat(entry['schedule_end_date'])
+            start_time = time.fromisoformat(entry['start_time'])
+            end_time = time.fromisoformat(entry['end_time'])
+        except Exception as e:
+            logger.error(e)
+            logger.error(entry)
+            continue
 
         if feature in feature_to_schedule_dict:
             if schedule not in feature_to_schedule_dict[feature]:
@@ -413,7 +409,7 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
             business_establishments[feature].add_schedule(be_schedule)
 
 
-def _calculate_with_time_filter(trips: list[Trip], timezone: str, business_establishments: dict[str, BusinessEstablishment]):
+def _calculate_with_time_filter(trips: list[Trip], timezone: ZoneInfo, business_establishments: dict[str, BusinessEstablishment]):
     for trip in trips:
         number = 0
         for iri in trip.iri_list:

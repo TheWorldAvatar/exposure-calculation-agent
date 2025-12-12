@@ -1,5 +1,10 @@
+from datetime import datetime
+
+
 class Trip:
-    def __init__(self, upper_index=None, lower_index=None, trajectory=None, lowerbound_time=None, upperbound_time=None):
+    exposure_result = 0
+
+    def __init__(self, upper_index=None, lower_index=None, trajectory=None, lowerbound_time: datetime = None, upperbound_time: datetime = None):
         # positions in the trajectory point array
         self.upper_index = upper_index
         self.lower_index = lower_index
