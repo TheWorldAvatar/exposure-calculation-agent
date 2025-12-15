@@ -1,4 +1,4 @@
-SELECT iri
+SELECT iri, ST_AsText(wkb_geometry) AS wkt
 FROM {TEMP_TABLE}
 WHERE ST_DWithin(
     {TEMP_TABLE}.wkb_geometry,

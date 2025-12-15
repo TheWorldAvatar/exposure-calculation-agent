@@ -17,6 +17,7 @@ from tqdm import tqdm
 import sys
 import json
 from datetime import datetime, date, time
+from psycopg2.extras import RealDictCursor
 
 logger = agentlogging.get_logger('dev')
 
@@ -66,7 +67,7 @@ def trajectory(calculation_input: CalculationInput):
 
     transformer = Transformer.from_crs(
         "EPSG:4326", CRS.from_proj4(proj4text), always_xy=True)
-    points = [transformer.transform(p.x, p.y) for p in points]
+    points = [Point(transformer.transform(p.x, p.y)) for p in points]
 
     logger.info('Processing trips')
     if trip_iri is not None:
@@ -74,11 +75,10 @@ def trajectory(calculation_input: CalculationInput):
         trips = _process_trip(trip_list, points, timestamp_list)
     else:
         # entire trajectory considered as a single trip
-        trips = [Trip(trajectory=LineString(points),
+        trips = [Trip(full_points_list=points,
                       lower_index=0,
                       upper_index=len(points) - 1,
-                      lowerbound=timestamp_list[0],
-                      upperbound=timestamp_list[-1])]
+                      full_time_list=timestamp_list)]
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
@@ -108,7 +108,7 @@ def trajectory(calculation_input: CalculationInput):
 
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(temp_table_sql)
 
             calculation_sql = calculation_sql.format(TEMP_TABLE=temp_table)
@@ -125,10 +125,10 @@ def trajectory(calculation_input: CalculationInput):
                 if cur.description:
                     query_result = cur.fetchall()
                     if calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_TIME_FILTER_COUNT:
-                        iri_list = [row[0] for row in query_result]
+                        iri_list = [row['iri'] for row in query_result]
                         trip.set_iri_list(iri_list)
                     else:
-                        if query_result[0][0] is None:
+                        if query_result[0]['exposure_result'] is None:
                             trip.set_exposure_result(0)
                         else:
                             trip.set_exposure_result(query_result[0][0])
@@ -161,7 +161,7 @@ def trajectory(calculation_input: CalculationInput):
     return 'Trajectory count complete', 200
 
 
-def _process_trip(trip_index_array, points, timestamp_list):
+def _process_trip(trip_index_array, points: list[Point], timestamp_list):
     """
     returns a list of Trip objects
    """
@@ -169,45 +169,26 @@ def _process_trip(trip_index_array, points, timestamp_list):
     current_trip_index = trip_index_array[0]  # index given by trip calculation
     lowerbound_index = 0  # position in the trajectory array
 
-    # records a new tuple every time the trip index changes
+    # records a new trip every time the trip index changes
     for i in range(1, len(trip_index_array)):
         if trip_index_array[i] != current_trip_index:
             upperbound_index = i - 1
-            lowerbound_time = timestamp_list[lowerbound_index]
-            upperbound_time = timestamp_list[upperbound_index]
-
-            if upperbound_index == lowerbound_index:
-                trajectory = Point(points[lowerbound_index])
-            else:
-                # python array slicing is non-inclusive for upper index
-                trajectory = LineString(
-                    points[lowerbound_index:upperbound_index + 1])
 
             trips.append(
-                Trip(upper_index=i-1,
+                Trip(upper_index=upperbound_index,
                      lower_index=lowerbound_index,
-                     trajectory=trajectory,
-                     lowerbound_time=lowerbound_time,
-                     upperbound_time=upperbound_time))
+                     full_points_list=points,
+                     full_time_list=timestamp_list))
 
             lowerbound_index = i
             current_trip_index = trip_index_array[i]
         elif i == len(trip_index_array) - 1:
             upperbound_index = i
-            lowerbound_time = timestamp_list[lowerbound_index]
-            upperbound_time = timestamp_list[i]
-
-            if lowerbound_index == upperbound_index:
-                trajectory = Point(points[lowerbound_index])
-            else:
-                trajectory = LineString(
-                    points[lowerbound_index:upperbound_index + 1])
 
             trips.append(Trip(upper_index=upperbound_index,
                               lower_index=lowerbound_index,
-                         trajectory=trajectory,
-                         lowerbound_time=lowerbound_time,
-                         upperbound_time=upperbound_time))
+                         full_points_list=points,
+                         full_time_list=timestamp_list))
 
     return trips
 
@@ -312,9 +293,14 @@ def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: Exp
     # check if trips fall into range of datasets
     tz = ZoneInfo(timezone)
     trips_to_consider = []
-    for trip in trips:
-        if exposure_dataset.start_date <= trip.lowerbound_time.astimezone(tz).date() <= trip.upperbound_time.astimezone(tz).date() <= exposure_dataset.end_date:
-            trips_to_consider.append(trip)
+    if None not in (exposure_dataset.start_date, exposure_dataset.end_date):
+        for trip in trips:
+            if exposure_dataset.start_date <= trip.lowerbound_time.astimezone(tz).date() <= trip.upperbound_time.astimezone(tz).date() <= exposure_dataset.end_date:
+                trips_to_consider.append(trip)
+    else:
+        logger.warning(
+            'Dataset start and end dates are not instantiated, hence ignored')
+        trips_to_consider = trip
 
     # there are no valid trips
     if not trips_to_consider:
@@ -334,9 +320,36 @@ def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: Exp
     business_establishments = {
         iri: BusinessEstablishment(iri) for iri in iri_set}
 
+    _set_business_start_end(business_establishments)
     _set_schedules(business_establishments)
     _calculate_with_time_filter(
         trips_to_consider, tz, business_establishments)
+
+
+def _set_business_start_end(business_establishments: dict[str, BusinessEstablishment]):
+    from agent.utils.kg_client import kg_client
+    varname = 'feature'
+    values = " ".join(f"<{iri}>" for iri in business_establishments)
+    values_clause = f"VALUES ?{varname} {{ {values} }}"
+
+    with open("agent/calculation/resources/business_start_end.sparql", "r") as f:
+        business_start_end_sparql = f.read().format(
+            VALUES_CLAUSE=values_clause, VARNAME=varname)
+
+    query_result = json.loads(kg_client.remote_store_client.executeQuery(
+        business_start_end_sparql).toString())
+
+    # please refer to the template for the variable names
+    for entry in query_result:
+        # support both date and timestamp
+        try:
+            start = date.fromisoformat(entry['start_time'])
+            end = date.fromisoformat(entry['end_time'])
+        except Exception():
+            start = datetime.fromisoformat(entry['start_time'])
+            end = datetime.fromisoformat(entry['end_time'])
+        business_establishments[entry[varname]].add_business_start_and_end(
+            business_start=start, business_end=end)
 
 
 def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
@@ -353,6 +366,7 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
         opening_hours_sparql).toString())
 
     feature_to_schedule_dict = {}
+    schedule_to_type_dict = {}
     schedule_days_dict = {}
     schedule_start_date_dict = {}
     schedule_end_date_dict = {}
@@ -365,6 +379,7 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
         feature = entry['feature']
         schedule = entry['schedule']
         day = entry['reccurent_day']
+        schedule_type = entry['schedule_type']
         try:
             schedule_start_date = date.fromisoformat(
                 entry['schedule_start_date'])
@@ -393,6 +408,8 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
         schedule_to_start_time_dict[schedule] = start_time
         schedule_to_end_time_dict[schedule] = end_time
 
+        schedule_to_type_dict[schedule] = schedule_type
+
     for feature in feature_to_schedule_dict:
         schedules = feature_to_schedule_dict[feature]
 
@@ -402,9 +419,10 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
             end_date = schedule_end_date_dict[schedule]
             start_time = schedule_to_start_time_dict[schedule]
             end_time = schedule_to_end_time_dict[schedule]
+            schedule_type = schedule_to_type_dict[schedule]
 
             be_schedule = Schedule(days=days, start_date=start_date, end_date=end_date,
-                                   start_time=start_time, end_time=end_time)
+                                   start_time=start_time, end_time=end_time, schedule_type=schedule_type)
 
             business_establishments[feature].add_schedule(be_schedule)
 
@@ -415,7 +433,7 @@ def _calculate_with_time_filter(trips: list[Trip], timezone: ZoneInfo, business_
         for iri in trip.iri_list:
             business_establishment = business_establishments[iri]
 
-            if business_establishment.business_is_open(
+            if business_establishment.business_exists(lowerbound_time=trip.lowerbound_time, upperbound_time=trip.upperbound_time) and business_establishment.is_open_full_containment(
                     lowerbound_time=trip.lowerbound_time,
                     upperbound_time=trip.upperbound_time,
                     timezone=timezone):

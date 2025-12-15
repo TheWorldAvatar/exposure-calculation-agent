@@ -1,4 +1,4 @@
-SELECT COUNT(*) AS intersection_count
+SELECT COUNT(*) AS exposure_result
 FROM {TEMP_TABLE}
 WHERE ST_DWithin(
     {TEMP_TABLE}.wkb_geometry,

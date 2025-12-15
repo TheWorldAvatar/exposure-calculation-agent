@@ -1,6 +1,9 @@
 # class to store business start/end dates and opening hours
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
+from twa import agentlogging
+
+logger = agentlogging.get_logger('dev')
 
 
 class BusinessEstablishment():
@@ -24,15 +27,25 @@ class BusinessEstablishment():
         self.schedules.append(schedule)
 
     def business_exists(self, lowerbound_time: datetime, upperbound_time: datetime):
+        if not self.start_and_end:
+            logger.info(
+                f"<{self.iri}> has no business start/end, assumed to exist")
+            return True
         for start, end in self.start_and_end:
             if isinstance(start, datetime) and isinstance(end, datetime):
                 return start <= lowerbound_time and upperbound_time <= end
             elif isinstance(start, date) and isinstance(end, date):
-                return start <= lowerbound_time.date and upperbound_time.date <= end
+                return start <= lowerbound_time.date() and upperbound_time.date() <= end
             else:
                 raise Exception('Unsupported type for business start and end')
 
-    def business_is_open(self, lowerbound_time: datetime, upperbound_time: datetime, timezone: ZoneInfo):
+    def is_open_full_containment(self, lowerbound_time: datetime, upperbound_time: datetime, timezone: ZoneInfo):
+        # upper and lowerbound times are completely within opening hours
+        if not self.schedules:
+            logger.info(
+                f"<{self.iri}> has no schedules, assumed to be open at all times")
+            return True
+
         start_timestamp = lowerbound_time.astimezone(timezone)
         end_timestamp = upperbound_time.astimezone(timezone)
 
@@ -64,12 +77,18 @@ class Schedule():
         'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Saturday': 6,
         'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Sunday': 7}
 
-    def __init__(self, days, start_time: datetime, end_time: datetime, start_date: date, end_date: date):
+    _REGULAR_SCHEDULE = 'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/RegularSchedule'
+
+    def __init__(self, days, start_time: datetime, end_time: datetime, start_date: date, end_date: date, schedule_type: str):
         if set(days).issubset(self._IRI_TO_ISO_WEEKDAY_DICT.keys()):
             self.days = [self._IRI_TO_ISO_WEEKDAY_DICT[day] for day in days]
         else:
             raise Exception(
                 f"Unsupported recurring days, accepted ones are: {self._IRI_TO_ISO_WEEKDAY_DICT.keys()}, given: {days}")
+
+        if schedule_type != self._REGULAR_SCHEDULE:
+            raise Exception(
+                f"Unsupported schedule type, accepted type: {self._REGULAR_SCHEDULE}")
 
         self.end_time = end_time
         self.start_time = start_time
