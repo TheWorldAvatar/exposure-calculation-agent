@@ -20,7 +20,8 @@ rdf_type_to_unit = {
     constants.TRAJECTORY_COUNT: '',
     constants.TRAJECTORY_AREA: METRE_SQUARED,
     constants.TRAJECTORY_AREA_WEIGHTED_SUM: METRE_SQUARED,
-    constants.TRAJECTORY_TIME_FILTER_COUNT: ''
+    constants.TRAJECTORY_TIME_FILTER_COUNT: '',
+    constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED: ''
 }
 
 

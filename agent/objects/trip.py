@@ -27,5 +27,9 @@ class Trip:
     def set_exposure_result(self, exposure_result):
         self.exposure_result = exposure_result
 
-    def set_iri_list(self, iri_list: list[str]):
-        self.iri_list = iri_list
+    def set_iri_wkt_dict(self, iri_wkt_dict: dict[str, str]):
+        # should be a property in the BusinesEstablishment class naturally, but placing it here due to convenience
+        self.iri_wkt_dict = iri_wkt_dict
+
+    def get_iri_list(self):
+        return self.iri_wkt_dict.keys()

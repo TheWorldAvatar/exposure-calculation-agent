@@ -25,14 +25,16 @@ rdf_type_to_sql_path = {
     constants.TRAJECTORY_COUNT: "agent/calculation/resources/count_trajectory.sql",
     constants.TRAJECTORY_AREA: "agent/calculation/resources/area_trajectory.sql",
     constants.TRAJECTORY_AREA_WEIGHTED_SUM: "agent/calculation/resources/area_weighted_sum_trajectory.sql",
-    constants.TRAJECTORY_TIME_FILTER_COUNT: "agent/calculation/resources/trajectory_iri.sql"
+    constants.TRAJECTORY_TIME_FILTER_COUNT: "agent/calculation/resources/trajectory_iri.sql",
+    constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED: "agent/calculation/resources/trajectory_iri.sql"
 }
 
 rdf_type_to_ts_class = {
     constants.TRAJECTORY_COUNT: stack_clients_view.java.lang.Integer.TYPE,
     constants.TRAJECTORY_AREA: stack_clients_view.java.lang.Double.TYPE,
     constants.TRAJECTORY_AREA_WEIGHTED_SUM: stack_clients_view.java.lang.Double.TYPE,
-    constants.TRAJECTORY_TIME_FILTER_COUNT: stack_clients_view.java.lang.Integer.TYPE
+    constants.TRAJECTORY_TIME_FILTER_COUNT: stack_clients_view.java.lang.Integer.TYPE,
+    constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED: stack_clients_view.java.lang.Integer.TYPE
 }
 
 # Important assumptions
@@ -96,7 +98,7 @@ def trajectory(calculation_input: CalculationInput):
     if calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_AREA_WEIGHTED_SUM:
         columns.append(exposure_dataset.area_column + ' AS area')
         columns.append(exposure_dataset.value_columhn + ' AS val')
-    elif calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_TIME_FILTER_COUNT:
+    elif calculation_input.calculation_metadata.rdf_type in [constants.TRAJECTORY_TIME_FILTER_COUNT, constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED]:
         columns.append(exposure_dataset.iri_column + ' AS iri')
 
     select_clause = ",\n       ".join(columns)
@@ -124,9 +126,10 @@ def trajectory(calculation_input: CalculationInput):
                 cur.execute(calculation_sql, replacements)
                 if cur.description:
                     query_result = cur.fetchall()
-                    if calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_TIME_FILTER_COUNT:
-                        iri_list = [row['iri'] for row in query_result]
-                        trip.set_iri_list(iri_list)
+                    if calculation_input.calculation_metadata.rdf_type in [constants.TRAJECTORY_TIME_FILTER_COUNT, constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED]:
+                        iri_wkt_dict = {row['iri']: row['wkt']
+                                        for row in query_result}
+                        trip.set_iri_wkt_dict(iri_wkt_dict)
                     else:
                         if query_result[0]['exposure_result'] is None:
                             trip.set_exposure_result(0)
@@ -147,9 +150,10 @@ def trajectory(calculation_input: CalculationInput):
         ts_client.add_columns(time_series_iri=time_series_iri, data_iri=[result_iri], class_list=[
                               rdf_type_to_ts_class[calculation_input.calculation_metadata.rdf_type]])
 
-    if calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_TIME_FILTER_COUNT:
+    if calculation_input.calculation_metadata.rdf_type in [constants.TRAJECTORY_TIME_FILTER_COUNT, constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED]:
         timezone = _get_time_zone(centroid)
-        _process_time_filter(trips, timezone, exposure_dataset)
+        _process_time_filter(trips=trips, timezone=timezone,
+                             exposure_dataset=exposure_dataset, calculation_type=calculation_input.calculation_metadata.rdf_type)
 
     # create a Java time series object to upload to database
     result_time_series = _create_result_time_series(
@@ -289,7 +293,7 @@ def _get_time_zone(centroid: Point):
         raise Exception('Unexpected query size while getting time zone')
 
 
-def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: ExposureDataset):
+def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: ExposureDataset, calculation_type: str):
     # check if trips fall into range of datasets
     tz = ZoneInfo(timezone)
     trips_to_consider = []
@@ -309,21 +313,30 @@ def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: Exp
     # collect a flattened iri list of all intersected establishments
     iri_list = []
     for trip in trips_to_consider:
-        iri_list += trip.iri_list
+        iri_list += trip.get_iri_list()
 
     # there are no features to consider
     if not iri_list:
         return
 
+    # combine dicts holding wkt values, some features may appear in multiple trips
+    combined_iri_wkt_dict = {}
+    for trip in trips_to_consider:
+        combined_iri_wkt_dict.update(trip.iri_wkt_dict)
+
     # remove duplicates
     iri_set = set(iri_list)
     business_establishments = {
-        iri: BusinessEstablishment(iri) for iri in iri_set}
+        iri: BusinessEstablishment(iri=iri, wkt_string=combined_iri_wkt_dict[iri]) for iri in iri_set}
 
     _set_business_start_end(business_establishments)
     _set_schedules(business_establishments)
-    _calculate_with_time_filter(
-        trips_to_consider, tz, business_establishments)
+    if calculation_type == constants.TRAJECTORY_TIME_FILTER_COUNT:
+        _opening_hours_filter_full_containment(
+            trips_to_consider, tz, business_establishments)
+    elif calculation_type == constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED:
+        _opening_hours_filter_closest_sensor(
+            trips_to_consider, tz, business_establishments)
 
 
 def _set_business_start_end(business_establishments: dict[str, BusinessEstablishment]):
@@ -427,16 +440,38 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
             business_establishments[feature].add_schedule(be_schedule)
 
 
-def _calculate_with_time_filter(trips: list[Trip], timezone: ZoneInfo, business_establishments: dict[str, BusinessEstablishment]):
+def _opening_hours_filter_full_containment(trips: list[Trip], timezone: ZoneInfo, business_establishments: dict[str, BusinessEstablishment]):
     for trip in trips:
         number = 0
-        for iri in trip.iri_list:
+        iri_list = []
+        for iri in trip.get_iri_list():
             business_establishment = business_establishments[iri]
 
-            if business_establishment.business_exists(lowerbound_time=trip.lowerbound_time, upperbound_time=trip.upperbound_time) and business_establishment.is_open_full_containment(
+            if business_establishment.business_exists(lowerbound_time=trip.lowerbound_time, upperbound_time=trip.upperbound_time) \
+                and business_establishment.is_open_trip_full_containment(
                     lowerbound_time=trip.lowerbound_time,
                     upperbound_time=trip.upperbound_time,
                     timezone=timezone):
                 number += 1
+                iri_list.append(iri)
+
+        trip.set_exposure_result(number)
+
+
+def _opening_hours_filter_closest_sensor(trips: list[Trip], timezone: ZoneInfo, business_establishments: dict[str, BusinessEstablishment]):
+    for trip in trips:
+        number = 0
+        iri_list = []
+        for iri in trip.get_iri_list():
+            business_establishment = business_establishments[iri]
+
+            if business_establishment.business_exists(lowerbound_time=trip.lowerbound_time, upperbound_time=trip.upperbound_time) \
+                    and business_establishment.is_open_trip_partial_overlap(
+                        lowerbound_time=trip.lowerbound_time,
+                        upperbound_time=trip.upperbound_time,
+                        timezone=timezone) \
+                    and business_establishment.is_open_closest_sensor(timezone=timezone, trip=trip):
+                number += 1
+                iri_list.append(iri)
 
         trip.set_exposure_result(number)
