@@ -84,7 +84,7 @@ class BusinessEstablishment():
         else:
             raise Exception('Only supporting regular schedules at the moment')
 
-    def business_exists(self, lowerbound_time: datetime, upperbound_time: datetime):
+    def business_exists(self, lowerbound_time: datetime, upperbound_time: datetime, timezone: ZoneInfo):
         if not self.start_and_end:
             logger.info(
                 f"<{self.iri}> has no business start/end, assumed to exist")
@@ -93,7 +93,7 @@ class BusinessEstablishment():
             if isinstance(start, datetime) and isinstance(end, datetime):
                 return start <= lowerbound_time and upperbound_time <= end
             elif isinstance(start, date) and isinstance(end, date):
-                return start <= lowerbound_time.date() and upperbound_time.date() <= end
+                return start <= lowerbound_time.astimezone(timezone).date() and upperbound_time.astimezone(timezone).date() <= end
             else:
                 raise Exception('Unsupported type for business start and end')
 
