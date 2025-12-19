@@ -6,6 +6,7 @@ from enum import StrEnum
 from shapely import wkt
 from shapely.strtree import STRtree
 
+from agent.objects.schedule import Schedule
 from agent.objects.trip import Trip
 
 logger = agentlogging.get_logger('dev')
@@ -14,42 +15,6 @@ logger = agentlogging.get_logger('dev')
 class ScheduleType(StrEnum):
     REGULAR = "regular"
     AD_HOC = "ad hoc"
-
-
-class Schedule():
-    # accepted recurrent schedules
-    _IRI_TO_ISO_WEEKDAY_DICT = {
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Monday': 1,
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Tuesday': 2,
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Wednesday': 3,
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Thursday': 4,
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Friday': 5,
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Saturday': 6,
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Sunday': 7}
-
-    _IRI_TO_SCHEDULE_TYPE = {
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/RegularSchedule': ScheduleType.REGULAR,
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/AdHocSchedule': ScheduleType.AD_HOC}
-
-    def __init__(self, days, start_time: time, end_time: time, start_date: date, end_date: date, schedule_type: str):
-        if set(days).issubset(self._IRI_TO_ISO_WEEKDAY_DICT.keys()):
-            self.days = [self._IRI_TO_ISO_WEEKDAY_DICT[day] for day in days]
-        else:
-            raise Exception(
-                f"Unsupported recurring days, accepted ones are: {self._IRI_TO_ISO_WEEKDAY_DICT.keys()}, given: {days}")
-
-        if schedule_type not in self._IRI_TO_SCHEDULE_TYPE.keys():
-            raise Exception(
-                f"Unsupported schedule type, accepted types: {self._IRI_TO_SCHEDULE_TYPE.keys()}")
-
-        self.end_time = end_time
-        self.start_time = start_time
-        self.start_date = start_date
-        self.end_date = end_date
-        self.schedule_type = self._IRI_TO_SCHEDULE_TYPE[schedule_type]
-
-    def is_valid_for_date(self, d: date):
-        return self.start_date <= d <= self.end_date
 
 
 class BusinessEstablishment():
@@ -118,28 +83,29 @@ class BusinessEstablishment():
 
             # check if trip is within validity of schedule, then obtain opening hours of that specific day
             if schedule.is_valid_for_date(start_timestamp.date()):
-                if schedule.start_time <= schedule.end_time and trip_span_days == 0:
-                    # same day range, e.g. 10:00 - 22:00
-                    return schedule.start_time <= start_timestamp.time() <= end_timestamp.time() <= schedule.end_time
-                else:
-                    # one of the ranges crosses midnight
-                    opening_seconds = _to_seconds(schedule.start_time)
-                    closing_seconds = _to_seconds(schedule.end_time)
+                for period in schedule.periods:
+                    if period.start_time <= period.end_time and trip_span_days == 0:
+                        # same day range, e.g. 10:00 - 22:00
+                        return period.start_time <= start_timestamp.time() <= end_timestamp.time() <= period.end_time
+                    else:
+                        # one of the ranges crosses midnight
+                        opening_seconds = _to_seconds(period.start_time)
+                        closing_seconds = _to_seconds(period.end_time)
 
-                    if closing_seconds <= opening_seconds:
-                        closing_seconds += 24*60*60
+                        if closing_seconds <= opening_seconds:
+                            closing_seconds += 24*60*60
 
-                    start_seconds = _to_seconds(start_timestamp.time())
-                    end_seconds = _to_seconds(end_timestamp.time())
+                        start_seconds = _to_seconds(start_timestamp.time())
+                        end_seconds = _to_seconds(end_timestamp.time())
 
-                    # adjust for trip crossing midnight
-                    if trip_span_days > 1:
-                        raise Exception(
-                            'Trips spanning more than 2 days are not supported')
-                    if trip_span_days == 1:
-                        end_seconds += 24*60*60
+                        # adjust for trip crossing midnight
+                        if trip_span_days > 1:
+                            raise Exception(
+                                'Trips spanning more than 2 days are not supported')
+                        if trip_span_days == 1:
+                            end_seconds += 24*60*60
 
-                    return opening_seconds <= start_seconds <= end_seconds <= closing_seconds
+                        return opening_seconds <= start_seconds <= end_seconds <= closing_seconds
 
         return False
 
@@ -163,32 +129,33 @@ class BusinessEstablishment():
 
             # check if trip is within validity of schedule, then obtain opening hours of that specific day
             if schedule.is_valid_for_date(start_timestamp.date()):
-                if schedule.start_time <= schedule.end_time and trip_span_days == 0:
-                    # same day range, e.g. 10:00 - 22:00
-                    return schedule.start_time <= start_timestamp.time() <= schedule.end_time or schedule.start_time <= end_timestamp.time() <= schedule.end_time
-                else:
-                    # one of the ranges crosses midnight
-                    opening_seconds = _to_seconds(schedule.start_time)
-                    closing_seconds = _to_seconds(schedule.end_time)
+                for period in schedule.periods:
+                    if period.start_time <= period.end_time and trip_span_days == 0:
+                        # same day range, e.g. 10:00 - 22:00
+                        return period.start_time <= start_timestamp.time() <= period.end_time or period.start_time <= end_timestamp.time() <= period.end_time
+                    else:
+                        # one of the ranges crosses midnight
+                        opening_seconds = _to_seconds(period.start_time)
+                        closing_seconds = _to_seconds(period.end_time)
 
-                    if closing_seconds <= opening_seconds:
-                        closing_seconds += 24*60*60
+                        if closing_seconds <= opening_seconds:
+                            closing_seconds += 24*60*60
 
-                    start_seconds = _to_seconds(start_timestamp.time())
-                    end_seconds = _to_seconds(end_timestamp.time())
+                        start_seconds = _to_seconds(start_timestamp.time())
+                        end_seconds = _to_seconds(end_timestamp.time())
 
-                    # adjust for trip crossing midnight
-                    if trip_span_days > 1:
-                        raise Exception(
-                            'Trips spanning more than 2 days are not supported')
-                    if trip_span_days == 1:
-                        end_seconds += 24*60*60
+                        # adjust for trip crossing midnight
+                        if trip_span_days > 1:
+                            raise Exception(
+                                'Trips spanning more than 2 days are not supported')
+                        if trip_span_days == 1:
+                            end_seconds += 24*60*60
 
-                    return opening_seconds <= start_seconds <= closing_seconds or opening_seconds <= end_seconds <= closing_seconds
+                        return opening_seconds <= start_seconds <= closing_seconds or opening_seconds <= end_seconds <= closing_seconds
 
         return False
 
-    def is_open_closest_sensor(self, timezone: ZoneInfo, trip: Trip):
+    def is_open_closest_point(self, timezone: ZoneInfo, trip: Trip):
         # upper and lowerbound times are completely within opening hours
         if not self.regular_schedules:
             logger.info(
@@ -218,22 +185,23 @@ class BusinessEstablishment():
             for schedule in self.regular_schedule_dict[matched_time_converted.isoweekday()]:
                 # check if trip is within validity of schedule, then obtain opening hours of that specific day
                 if schedule.is_valid_for_date(matched_time_converted.date()):
-                    if schedule.start_time <= schedule.end_time:
-                        # same day range, e.g. 10:00 - 22:00
-                        exposed = schedule.start_time <= matched_time_converted.time() <= schedule.end_time
-                        # there is only one valid regular schedule per day so the loop will not continue
-                    else:
-                        # opening hours crosses midnight
-                        opening_seconds = _to_seconds(schedule.start_time)
-                        closing_seconds = _to_seconds(
-                            schedule.end_time) + 24*60*60
+                    for period in schedule.periods:
+                        if period.start_time <= period.end_time:
+                            # same day range, e.g. 10:00 - 22:00
+                            exposed = period.start_time <= matched_time_converted.time() <= period.end_time
+                            # there is only one valid regular schedule per day so the loop will not continue
+                        else:
+                            # opening hours crosses midnight
+                            opening_seconds = _to_seconds(period.start_time)
+                            closing_seconds = _to_seconds(
+                                period.end_time) + 24*60*60
 
-                        # if this happens right after midnight there will be an error, will be supported in the next iteration
-                        matched_time_seconds = _to_seconds(
-                            matched_time_converted.time())
+                            # if this happens right after midnight there will be an error, will be supported in the next iteration
+                            matched_time_seconds = _to_seconds(
+                                matched_time_converted.time())
 
-                        exposed = opening_seconds <= matched_time_seconds <= closing_seconds
-                        # there is only one valid regular schedule per day so the loop will not continue
+                            exposed = opening_seconds <= matched_time_seconds <= closing_seconds
+                            # there is only one valid regular schedule per day so the loop will not continue
 
         return exposed
 

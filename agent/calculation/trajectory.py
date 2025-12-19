@@ -1,7 +1,8 @@
 from zoneinfo import ZoneInfo
 from agent.calculation.shared_utils import instantiate_result_ontop
-from agent.objects.business_establishment import BusinessEstablishment, Schedule
+from agent.objects.business_establishment import BusinessEstablishment
 from agent.objects.exposure_dataset import ExposureDataset, get_exposure_dataset
+from agent.objects.schedule import Schedule, SchedulePeriod
 from agent.utils import constants
 from agent.utils.ts_client import TimeSeriesClient
 from agent.calculation.calculation_input import CalculationInput
@@ -335,7 +336,7 @@ def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: Exp
         _opening_hours_filter_full_containment(
             trips_to_consider, tz, business_establishments)
     elif calculation_type == constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED:
-        _opening_hours_filter_closest_sensor(
+        _opening_hours_filter_closest_point(
             trips_to_consider, tz, business_establishments)
 
 
@@ -378,13 +379,14 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
     query_result = json.loads(kg_client.remote_store_client.executeQuery(
         opening_hours_sparql).toString())
 
-    feature_to_schedule_dict = {}
-    schedule_to_type_dict = {}
-    schedule_days_dict = {}
-    schedule_start_date_dict = {}
-    schedule_end_date_dict = {}
-    schedule_to_end_time_dict = {}
-    schedule_to_start_time_dict = {}
+    feature_to_schedule_dict = {}  # multiple schedules allowed
+    schedule_to_type_dict = {}  # single value only
+    schedule_days_dict = {}  # multiple days allowed
+    schedule_start_date_dict = {}  # single value only
+    schedule_end_date_dict = {}  # single value only
+    schedule_to_period_dict = {}  # multiple periods allowed, e.g. 1000-1200, 1300-1700
+    period_to_start_time_dict = {}  # single value only
+    period_to_end_time_dict = {}  # single value only
 
     # one schedule can repeat over multiple days, but can only have one time range
     # please refer to the template for the variable names
@@ -393,6 +395,7 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
         schedule = entry['schedule']
         day = entry['reccurent_day']
         schedule_type = entry['schedule_type']
+        period = entry['timeperiod']
         try:
             schedule_start_date = date.fromisoformat(
                 entry['schedule_start_date'])
@@ -404,22 +407,26 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
             logger.error(entry)
             continue
 
-        if feature in feature_to_schedule_dict:
-            if schedule not in feature_to_schedule_dict[feature]:
-                feature_to_schedule_dict[feature].append(schedule)
-        else:
-            feature_to_schedule_dict[feature] = [schedule]
+        if feature not in feature_to_schedule_dict:
+            feature_to_schedule_dict[feature] = set()
 
-        if schedule in schedule_days_dict:
-            schedule_days_dict[schedule].append(day)
-        else:
-            schedule_days_dict[schedule] = [day]
+        feature_to_schedule_dict[feature].add(schedule)
+
+        if schedule not in schedule_days_dict:
+            schedule_days_dict[schedule] = set()
+
+        schedule_days_dict[schedule].add(day)
+
+        if schedule not in schedule_to_period_dict:
+            schedule_to_period_dict[schedule] = set()
+
+        schedule_to_period_dict[schedule].add(period)
 
         schedule_start_date_dict[schedule] = schedule_start_date
         schedule_end_date_dict[schedule] = schedule_end_date
 
-        schedule_to_start_time_dict[schedule] = start_time
-        schedule_to_end_time_dict[schedule] = end_time
+        period_to_start_time_dict[period] = start_time
+        period_to_end_time_dict[period] = end_time
 
         schedule_to_type_dict[schedule] = schedule_type
 
@@ -430,12 +437,18 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
             days = schedule_days_dict[schedule]
             start_date = schedule_start_date_dict[schedule]
             end_date = schedule_end_date_dict[schedule]
-            start_time = schedule_to_start_time_dict[schedule]
-            end_time = schedule_to_end_time_dict[schedule]
             schedule_type = schedule_to_type_dict[schedule]
 
-            be_schedule = Schedule(days=days, start_date=start_date, end_date=end_date,
-                                   start_time=start_time, end_time=end_time, schedule_type=schedule_type)
+            period_iri_list = schedule_to_period_dict[schedule]
+
+            schedule_periods = [SchedulePeriod(start_time=period_to_start_time_dict[period],
+                                               end_time=period_to_end_time_dict[period]) for period in period_iri_list]
+
+            be_schedule = Schedule(
+                days=days, start_date=start_date, end_date=end_date, schedule_type=schedule_type)
+
+            for schedule_period in schedule_periods:
+                be_schedule.add_period(schedule_period)
 
             business_establishments[feature].add_schedule(be_schedule)
 
@@ -447,7 +460,7 @@ def _opening_hours_filter_full_containment(trips: list[Trip], timezone: ZoneInfo
         for iri in trip.get_iri_list():
             business_establishment = business_establishments[iri]
 
-            if business_establishment.business_exists(lowerbound_time=trip.lowerbound_time, upperbound_time=trip.upperbound_time) \
+            if business_establishment.business_exists(lowerbound_time=trip.lowerbound_time, upperbound_time=trip.upperbound_time, timezone=timezone) \
                 and business_establishment.is_open_trip_full_containment(
                     lowerbound_time=trip.lowerbound_time,
                     upperbound_time=trip.upperbound_time,
@@ -458,19 +471,19 @@ def _opening_hours_filter_full_containment(trips: list[Trip], timezone: ZoneInfo
         trip.set_exposure_result(number)
 
 
-def _opening_hours_filter_closest_sensor(trips: list[Trip], timezone: ZoneInfo, business_establishments: dict[str, BusinessEstablishment]):
+def _opening_hours_filter_closest_point(trips: list[Trip], timezone: ZoneInfo, business_establishments: dict[str, BusinessEstablishment]):
     for trip in trips:
         number = 0
         iri_list = []
         for iri in trip.get_iri_list():
             business_establishment = business_establishments[iri]
 
-            if business_establishment.business_exists(lowerbound_time=trip.lowerbound_time, upperbound_time=trip.upperbound_time) \
+            if business_establishment.business_exists(lowerbound_time=trip.lowerbound_time, upperbound_time=trip.upperbound_time, timezone=timezone) \
                     and business_establishment.is_open_trip_partial_overlap(
                         lowerbound_time=trip.lowerbound_time,
                         upperbound_time=trip.upperbound_time,
                         timezone=timezone) \
-                    and business_establishment.is_open_closest_sensor(timezone=timezone, trip=trip):
+                    and business_establishment.is_open_closest_point(timezone=timezone, trip=trip):
                 number += 1
                 iri_list.append(iri)
 
