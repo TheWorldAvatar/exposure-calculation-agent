@@ -457,14 +457,17 @@ def _opening_hours_filter_full_containment(trips: list[Trip], timezone: ZoneInfo
     for trip in trips:
         number = 0
         iri_list = []
+
+        trip_lb = trip.lowerbound_time.astimezone(timezone)
+        trip_ub = trip.upperbound_time.astimezone(timezone)
+
         for iri in trip.get_iri_list():
             business_establishment = business_establishments[iri]
 
-            if business_establishment.business_exists(lowerbound_time=trip.lowerbound_time, upperbound_time=trip.upperbound_time, timezone=timezone) \
-                and business_establishment.is_open_trip_full_containment(
-                    lowerbound_time=trip.lowerbound_time,
-                    upperbound_time=trip.upperbound_time,
-                    timezone=timezone):
+            if business_establishment.business_exists(lowerbound_time=trip_lb, upperbound_time=trip_ub) \
+                and business_establishment.is_open_full_containment(
+                    lowerbound_time=trip_lb,
+                    upperbound_time=trip_ub):
                 number += 1
                 iri_list.append(iri)
 
@@ -475,14 +478,16 @@ def _opening_hours_filter_closest_point(trips: list[Trip], timezone: ZoneInfo, b
     for trip in trips:
         number = 0
         iri_list = []
+        trip_lb = trip.lowerbound_time.astimezone(timezone)
+        trip_ub = trip.upperbound_time.astimezone(timezone)
+
         for iri in trip.get_iri_list():
             business_establishment = business_establishments[iri]
 
-            if business_establishment.business_exists(lowerbound_time=trip.lowerbound_time, upperbound_time=trip.upperbound_time, timezone=timezone) \
-                    and business_establishment.is_open_trip_partial_overlap(
+            if business_establishment.business_exists(lowerbound_time=trip_lb, upperbound_time=trip_ub) \
+                    and business_establishment.is_open_partial_overlap(
                         lowerbound_time=trip.lowerbound_time,
-                        upperbound_time=trip.upperbound_time,
-                        timezone=timezone) \
+                        upperbound_time=trip.upperbound_time) \
                     and business_establishment.is_open_closest_point(timezone=timezone, trip=trip):
                 number += 1
                 iri_list.append(iri)

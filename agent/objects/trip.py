@@ -19,8 +19,8 @@ class Trip:
             self.trajectory = LineString(self.points_list)
 
         # timebounds
-        self.lowerbound_time = full_time_list[lower_index]
-        self.upperbound_time = full_time_list[upper_index]
+        self.lowerbound_time: datetime = full_time_list[lower_index]
+        self.upperbound_time: datetime = full_time_list[upper_index]
 
         self.time_list = full_time_list[lower_index:upper_index+1]
 

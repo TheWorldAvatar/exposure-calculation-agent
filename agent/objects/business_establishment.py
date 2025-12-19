@@ -49,7 +49,7 @@ class BusinessEstablishment():
         else:
             raise Exception('Only supporting regular schedules at the moment')
 
-    def business_exists(self, lowerbound_time: datetime, upperbound_time: datetime, timezone: ZoneInfo):
+    def business_exists(self, lowerbound_time: datetime, upperbound_time: datetime):
         if not self.start_and_end:
             logger.info(
                 f"<{self.iri}> has no business start/end, assumed to exist")
@@ -58,35 +58,32 @@ class BusinessEstablishment():
             if isinstance(start, datetime) and isinstance(end, datetime):
                 return start <= lowerbound_time and upperbound_time <= end
             elif isinstance(start, date) and isinstance(end, date):
-                return start <= lowerbound_time.astimezone(timezone).date() and upperbound_time.astimezone(timezone).date() <= end
+                return start <= lowerbound_time.date() and upperbound_time.date() <= end
             else:
                 raise Exception('Unsupported type for business start and end')
 
-    def is_open_trip_full_containment(self, lowerbound_time: datetime, upperbound_time: datetime, timezone: ZoneInfo):
+    def is_open_full_containment(self, lowerbound_time: datetime, upperbound_time: datetime):
         # upper and lowerbound times are completely within opening hours
         if not self.regular_schedules:
             logger.info(
                 f"<{self.iri}> has no regular schedules, assumed to be open at all times")
             return True
 
-        start_timestamp = lowerbound_time.astimezone(timezone)
-        end_timestamp = upperbound_time.astimezone(timezone)
-
-        if start_timestamp.isoweekday() not in self.regular_schedule_dict.keys():
+        if lowerbound_time.isoweekday() not in self.regular_schedule_dict.keys():
             # there is no schedule for the day
             return False
 
-        for schedule in self.regular_schedule_dict[start_timestamp.isoweekday()]:
+        for schedule in self.regular_schedule_dict[lowerbound_time.isoweekday()]:
             # check if trip spans across multiple dates
-            trip_span_days = (end_timestamp.date() -
-                              start_timestamp.date()).days
+            trip_span_days = (upperbound_time.date() -
+                              lowerbound_time.date()).days
 
             # check if trip is within validity of schedule, then obtain opening hours of that specific day
-            if schedule.is_valid_for_date(start_timestamp.date()):
+            if schedule.is_valid_for_date(lowerbound_time.date()):
                 for period in schedule.periods:
                     if period.start_time <= period.end_time and trip_span_days == 0:
                         # same day range, e.g. 10:00 - 22:00
-                        return period.start_time <= start_timestamp.time() <= end_timestamp.time() <= period.end_time
+                        return period.start_time <= lowerbound_time.time() <= upperbound_time.time() <= period.end_time
                     else:
                         # one of the ranges crosses midnight
                         opening_seconds = _to_seconds(period.start_time)
@@ -95,8 +92,8 @@ class BusinessEstablishment():
                         if closing_seconds <= opening_seconds:
                             closing_seconds += 24*60*60
 
-                        start_seconds = _to_seconds(start_timestamp.time())
-                        end_seconds = _to_seconds(end_timestamp.time())
+                        start_seconds = _to_seconds(lowerbound_time.time())
+                        end_seconds = _to_seconds(upperbound_time.time())
 
                         # adjust for trip crossing midnight
                         if trip_span_days > 1:
@@ -109,30 +106,27 @@ class BusinessEstablishment():
 
         return False
 
-    def is_open_trip_partial_overlap(self, lowerbound_time: datetime, upperbound_time: datetime, timezone: ZoneInfo):
+    def is_open_partial_overlap(self, lowerbound_time: datetime, upperbound_time: datetime):
         if not self.regular_schedules:
             logger.info(
                 f"<{self.iri}> has no regular schedules, assumed to be open at all times")
             return True
 
-        start_timestamp = lowerbound_time.astimezone(timezone)
-        end_timestamp = upperbound_time.astimezone(timezone)
-
-        if start_timestamp.isoweekday() not in self.regular_schedule_dict.keys():
+        if lowerbound_time.isoweekday() not in self.regular_schedule_dict.keys():
             # there is no schedule for the day
             return False
 
-        for schedule in self.regular_schedule_dict[start_timestamp.isoweekday()]:
+        for schedule in self.regular_schedule_dict[lowerbound_time.isoweekday()]:
             # check if trip spans across multiple dates
-            trip_span_days = (end_timestamp.date() -
-                              start_timestamp.date()).days
+            trip_span_days = (upperbound_time.date() -
+                              lowerbound_time.date()).days
 
             # check if trip is within validity of schedule, then obtain opening hours of that specific day
-            if schedule.is_valid_for_date(start_timestamp.date()):
+            if schedule.is_valid_for_date(lowerbound_time.date()):
                 for period in schedule.periods:
                     if period.start_time <= period.end_time and trip_span_days == 0:
                         # same day range, e.g. 10:00 - 22:00
-                        return period.start_time <= start_timestamp.time() <= period.end_time or period.start_time <= end_timestamp.time() <= period.end_time
+                        return period.start_time <= lowerbound_time.time() <= period.end_time or period.start_time <= upperbound_time.time() <= period.end_time
                     else:
                         # one of the ranges crosses midnight
                         opening_seconds = _to_seconds(period.start_time)
@@ -141,8 +135,8 @@ class BusinessEstablishment():
                         if closing_seconds <= opening_seconds:
                             closing_seconds += 24*60*60
 
-                        start_seconds = _to_seconds(start_timestamp.time())
-                        end_seconds = _to_seconds(end_timestamp.time())
+                        start_seconds = _to_seconds(lowerbound_time.time())
+                        end_seconds = _to_seconds(upperbound_time.time())
 
                         # adjust for trip crossing midnight
                         if trip_span_days > 1:

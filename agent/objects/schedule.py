@@ -18,9 +18,11 @@ class SchedulePeriod():
 
     def __post_init__(self):
         if self.start_time > self.end_time:
-            logger.warning("start_time > end_time, will be unsupported soon")
-            # raise ValueError(
-            #     f"Invalid period, start_time must be less than end_time start_time: {self.start_time}, end_time: {self.end_time}")
+            logger.warning(
+                f"start_time > end_time, opening hours crossing midnight? start_time = {self.start_time}, end_time = {self.end_time}")
+            logger.warning(
+                "You need to instantiate this differently, setting end_time to 23:59")
+            self.end_time = time(23, 59)
 
 
 class Schedule():
