@@ -17,7 +17,7 @@ from shapely import wkt
 from tqdm import tqdm
 import sys
 import json
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from psycopg2.extras import RealDictCursor
 
 logger = agentlogging.get_logger('dev')
@@ -465,13 +465,25 @@ def _opening_hours_filter_full_containment(trips: list[Trip], timezone: ZoneInfo
             business_establishment = business_establishments[iri]
 
             if business_establishment.business_exists(lowerbound_time=trip_lb, upperbound_time=trip_ub) \
-                and business_establishment.is_open_full_containment(
-                    lowerbound_time=trip_lb,
-                    upperbound_time=trip_ub):
+                    and _is_open_trip_full_containment(trip_lb=trip_lb, trip_ub=trip_ub, business_establishment=business_establishment):
                 number += 1
                 iri_list.append(iri)
 
         trip.set_exposure_result(number)
+
+
+def _is_open_trip_full_containment(trip_lb: datetime, trip_ub: datetime, business_establishment: BusinessEstablishment):
+    datetime_ranges = _split_by_day(start=trip_lb, end=trip_ub)
+
+    all_open = all(
+        business_establishment.is_open_full_containment(
+            lowerbound_time=dt_start,
+            upperbound_time=dt_end
+        )
+        for dt_start, dt_end in datetime_ranges
+    )
+
+    return all_open
 
 
 def _opening_hours_filter_closest_point(trips: list[Trip], timezone: ZoneInfo, business_establishments: dict[str, BusinessEstablishment]):
@@ -485,11 +497,44 @@ def _opening_hours_filter_closest_point(trips: list[Trip], timezone: ZoneInfo, b
             business_establishment = business_establishments[iri]
 
             if business_establishment.business_exists(lowerbound_time=trip_lb, upperbound_time=trip_ub) \
-                    and business_establishment.is_open_partial_overlap(
-                        lowerbound_time=trip.lowerbound_time,
-                        upperbound_time=trip.upperbound_time) \
+                    and _is_open_trip_partial_overlap(trip_lb=trip_lb, trip_ub=trip_ub, business_establishment=business_establishment) \
                     and business_establishment.is_open_closest_point(timezone=timezone, trip=trip):
                 number += 1
                 iri_list.append(iri)
 
         trip.set_exposure_result(number)
+
+
+def _is_open_trip_partial_overlap(trip_lb: datetime, trip_ub: datetime, business_establishment: BusinessEstablishment):
+    datetime_ranges = _split_by_day(start=trip_lb, end=trip_ub)
+
+    any_overlap = any(
+        business_establishment.is_open_partial_overlap(
+            lowerbound_time=dt_start,
+            upperbound_time=dt_end
+        )
+        for dt_start, dt_end in datetime_ranges
+    )
+
+    return any_overlap
+
+
+def _split_by_day(start: datetime, end: datetime):
+    if start > end:
+        raise ValueError("start must be <= end")
+
+    result = []
+    current = start
+
+    while current.date() < end.date():
+        day_end = datetime.combine(
+            current.date(),
+            time(23, 59, 59),
+            tzinfo=current.tzinfo,
+        )
+        result.append((current, day_end))
+        current = day_end + timedelta(seconds=1)
+
+    # last segment
+    result.append((current, end))
+    return result

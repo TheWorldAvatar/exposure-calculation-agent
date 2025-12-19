@@ -74,35 +74,9 @@ class BusinessEstablishment():
             return False
 
         for schedule in self.regular_schedule_dict[lowerbound_time.isoweekday()]:
-            # check if trip spans across multiple dates
-            trip_span_days = (upperbound_time.date() -
-                              lowerbound_time.date()).days
-
             # check if trip is within validity of schedule, then obtain opening hours of that specific day
             if schedule.is_valid_for_date(lowerbound_time.date()):
-                for period in schedule.periods:
-                    if period.start_time <= period.end_time and trip_span_days == 0:
-                        # same day range, e.g. 10:00 - 22:00
-                        return period.start_time <= lowerbound_time.time() <= upperbound_time.time() <= period.end_time
-                    else:
-                        # one of the ranges crosses midnight
-                        opening_seconds = _to_seconds(period.start_time)
-                        closing_seconds = _to_seconds(period.end_time)
-
-                        if closing_seconds <= opening_seconds:
-                            closing_seconds += 24*60*60
-
-                        start_seconds = _to_seconds(lowerbound_time.time())
-                        end_seconds = _to_seconds(upperbound_time.time())
-
-                        # adjust for trip crossing midnight
-                        if trip_span_days > 1:
-                            raise Exception(
-                                'Trips spanning more than 2 days are not supported')
-                        if trip_span_days == 1:
-                            end_seconds += 24*60*60
-
-                        return opening_seconds <= start_seconds <= end_seconds <= closing_seconds
+                return any(period.start_time <= lowerbound_time.time() <= upperbound_time.time() <= period.end_time for period in schedule.periods)
 
         return False
 
@@ -117,35 +91,9 @@ class BusinessEstablishment():
             return False
 
         for schedule in self.regular_schedule_dict[lowerbound_time.isoweekday()]:
-            # check if trip spans across multiple dates
-            trip_span_days = (upperbound_time.date() -
-                              lowerbound_time.date()).days
-
             # check if trip is within validity of schedule, then obtain opening hours of that specific day
             if schedule.is_valid_for_date(lowerbound_time.date()):
-                for period in schedule.periods:
-                    if period.start_time <= period.end_time and trip_span_days == 0:
-                        # same day range, e.g. 10:00 - 22:00
-                        return period.start_time <= lowerbound_time.time() <= period.end_time or period.start_time <= upperbound_time.time() <= period.end_time
-                    else:
-                        # one of the ranges crosses midnight
-                        opening_seconds = _to_seconds(period.start_time)
-                        closing_seconds = _to_seconds(period.end_time)
-
-                        if closing_seconds <= opening_seconds:
-                            closing_seconds += 24*60*60
-
-                        start_seconds = _to_seconds(lowerbound_time.time())
-                        end_seconds = _to_seconds(upperbound_time.time())
-
-                        # adjust for trip crossing midnight
-                        if trip_span_days > 1:
-                            raise Exception(
-                                'Trips spanning more than 2 days are not supported')
-                        if trip_span_days == 1:
-                            end_seconds += 24*60*60
-
-                        return opening_seconds <= start_seconds <= closing_seconds or opening_seconds <= end_seconds <= closing_seconds
+                return any(period.start_time <= lowerbound_time.time() <= period.end_time or period.start_time <= upperbound_time.time() <= period.end_time for period in schedule.periods)
 
         return False
 
@@ -179,26 +127,6 @@ class BusinessEstablishment():
             for schedule in self.regular_schedule_dict[matched_time_converted.isoweekday()]:
                 # check if trip is within validity of schedule, then obtain opening hours of that specific day
                 if schedule.is_valid_for_date(matched_time_converted.date()):
-                    for period in schedule.periods:
-                        if period.start_time <= period.end_time:
-                            # same day range, e.g. 10:00 - 22:00
-                            exposed = period.start_time <= matched_time_converted.time() <= period.end_time
-                            # there is only one valid regular schedule per day so the loop will not continue
-                        else:
-                            # opening hours crosses midnight
-                            opening_seconds = _to_seconds(period.start_time)
-                            closing_seconds = _to_seconds(
-                                period.end_time) + 24*60*60
-
-                            # if this happens right after midnight there will be an error, will be supported in the next iteration
-                            matched_time_seconds = _to_seconds(
-                                matched_time_converted.time())
-
-                            exposed = opening_seconds <= matched_time_seconds <= closing_seconds
-                            # there is only one valid regular schedule per day so the loop will not continue
-
+                    exposed = any(period.start_time <= matched_time_converted.time(
+                    ) <= period.end_time for period in schedule.periods)
         return exposed
-
-
-def _to_seconds(t: time):
-    return t.hour * 3600 + t.minute * 60 + t.second
