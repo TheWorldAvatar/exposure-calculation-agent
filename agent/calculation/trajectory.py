@@ -529,11 +529,11 @@ def _split_by_day(start: datetime, end: datetime):
     while current.date() < end.date():
         day_end = datetime.combine(
             current.date(),
-            time(23, 59, 59),
+            time(23, 59),
             tzinfo=current.tzinfo,
         )
         result.append((current, day_end))
-        current = day_end + timedelta(seconds=1)
+        current = day_end + timedelta(minutes=1)
 
     # last segment
     result.append((current, end))
