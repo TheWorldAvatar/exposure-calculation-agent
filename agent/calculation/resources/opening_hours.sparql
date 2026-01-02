@@ -8,11 +8,11 @@ WHERE {{
   ?{VARNAME}  fibo-fnd-fd:hasSchedule        ?schedule .
 
   ?schedule a ?schedule_type ;
-            cmns-dt:hasTimePeriod          ?timeperiod ;
-            fibo-fnd-fd:hasRecurrenceInterval ?reccurent_day ;
-            cmns-dt:hasEndDate             ?schedule_end_date ;
-            cmns-dt:hasStartDate           ?schedule_start_date .
+    cmns-dt:hasTimePeriod                          ?timeperiod ;
+    fibo-fnd-fd:hasRecurrenceInterval              ?reccurent_day ;
+    cmns-dt:hasEndDate/cmns-dt:hasDateValue        ?schedule_end_date ;
+    cmns-dt:hasStartDate/cmns-dt:hasDateValue      ?schedule_start_date .
 
-  ?timeperiod cmns-dt:hasEndTime/cmns-dt:hasTimeValue   ?end_time .
-  ?timeperiod cmns-dt:hasStartTime/cmns-dt:hasTimeValue      ?start_time .
+  ?timeperiod cmns-dt:hasEndTime/cmns-dt:hasTimeValue     ?end_time .
+  ?timeperiod cmns-dt:hasStartTime/cmns-dt:hasTimeValue   ?start_time .
 }}
