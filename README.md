@@ -397,7 +397,3 @@ The following APIs are used to initialise the necessary instances and trigger th
     ```bash
     curl -o trajectory_result.csv 'http://localhost:3838/exposure-calculation-agent/csv_export/trajectory?rdf_type=https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea&subject=http://trip_trajectory&exposure_table=parks_2016&lowerbound=1715759710072&upperbound=1715759730231'
     ```
-
-## Note on Ontop usage
-
-[agent/calculation/resources/ontop.obda](agent/calculation/resources/ontop.obda) shows some triples that make use of the entire value of a table entry, e.g. `<{subject}>`, instead of something like `derivation:{id}`. When these are mixed together, mappings that make use of `<https://w3id.org/obda/vocabulary#isCanonicalIRIOf>` (Ontop's function to mark two IRIs are equivalent) may not work properly.
