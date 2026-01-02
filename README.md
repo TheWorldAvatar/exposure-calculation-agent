@@ -111,7 +111,7 @@ Time series data:
 | 2 | POINT(3 4)    |
 | 3 | POINT(5 6)    |
 
-A trajectory can be accompanied by trip data instantiated by the trip agent (<https://github.com/TheWorldAvatar/trip-agent>), the trip data shares the same time series as the subject of exposure:
+A trajectory can be accompanied by trip data instantiated by the trip agent (<https://github.com/TheWorldAvatar/trip-agent>), the trip data shares the same time values as the subject of exposure:
 
 | Time |     Point     | Trip |
 |------|---------------|------|
@@ -126,7 +126,7 @@ Points to a table in PostGIS, assumed to be uploaded using the stack data upload
 
 ```ttl
 <http://dataset> a dcat:Dataset;
-    dcterm:title 'table_name'.
+    dcterms:title 'table_name'.
 ```
 
 The dataset type (raster or vector) depends on the calculation type
@@ -363,7 +363,7 @@ The following APIs are used to initialise the necessary instances and trigger th
     ```
 
     Overview:
-    1) This route checks whether a calculation instance with the specified RDF type and metadata (e.g. distance) exists, then instantiate one if necessary. 
+    1) This route checks whether a calculation instance with the specified RDF type and metadata (e.g. distance) exists, then instantiate one if necessary.
     2) If `subject_query_file` is given, it will run the query to obtain the subject IRIs, otherwise IRI is simply obtained from the `subject` parameter.
     3) Then it queries the dataset IRI of the given `exposure_table`, because the core agent is designed to read in IRIs only.
     4) Finally sends a request to the core agent with the IRIs of subject, exposure, and calculation.
