@@ -1,5 +1,5 @@
 # class to store business start/end dates and opening hours
-from datetime import date, datetime, time
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from twa import agentlogging
 from enum import StrEnum

@@ -38,8 +38,6 @@ rdf_type_to_ts_class = {
     constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED: stack_clients_view.java.lang.Integer.TYPE
 }
 
-# Important assumptions
-
 
 def trajectory(calculation_input: CalculationInput):
     from agent.utils.kg_client import kg_client
@@ -255,6 +253,10 @@ def _get_exposure_result(calculation_input: CalculationInput):
 
 def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
     from agent.utils.kg_client import kg_client
+
+    # check time class, exception will be thrown if checks fail
+    kg_client.check_time_class(subject)
+
     values_list = [subject]
     if trip is not None:
         values_list.append(trip)
@@ -475,6 +477,7 @@ def _opening_hours_filter_full_containment(trips: list[Trip], timezone: ZoneInfo
 def _is_open_trip_full_containment(trip_lb: datetime, trip_ub: datetime, business_establishment: BusinessEstablishment):
     datetime_ranges = _split_by_day(start=trip_lb, end=trip_ub)
 
+    # each portion of the trip needs to be within the opening hours
     all_open = all(
         business_establishment.is_open_full_containment(
             lowerbound_time=dt_start,

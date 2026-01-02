@@ -5,7 +5,7 @@ from shapely.geometry import Point, LineString
 class Trip:
     exposure_result = 0
 
-    def __init__(self, upper_index=None, lower_index=None, full_time_list: list[datetime] = None, lowerbound_time: datetime = None, upperbound_time: datetime = None, full_points_list: list[Point] = None):
+    def __init__(self, upper_index=None, lower_index=None, full_time_list: list[datetime] = None, full_points_list: list[Point] = None):
         # positions in the trajectory point array
         self.upper_index = upper_index
         self.lower_index = lower_index
