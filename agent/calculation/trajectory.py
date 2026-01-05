@@ -397,9 +397,6 @@ def _set_regular_schedules(business_establishments: dict[str, BusinessEstablishm
         day = entry['reccurent_day']
         period = entry['timeperiod']
         try:
-            schedule_start_date = date.fromisoformat(
-                entry['schedule_start_date'])
-            schedule_end_date = date.fromisoformat(entry['schedule_end_date'])
             start_time = time.fromisoformat(entry['start_time'])
             end_time = time.fromisoformat(entry['end_time'])
         except Exception as e:
@@ -422,8 +419,13 @@ def _set_regular_schedules(business_establishments: dict[str, BusinessEstablishm
 
         schedule_to_period_dict[schedule].add(period)
 
-        schedule_start_date_dict[schedule] = schedule_start_date
-        schedule_end_date_dict[schedule] = schedule_end_date
+        if 'schedule_start_date' in entry:
+            schedule_start_date_dict[schedule] = date.fromisoformat(
+                entry['schedule_start_date'])
+
+        if 'schedule_end_date' in entry:
+            schedule_end_date_dict[schedule] = date.fromisoformat(
+                entry['schedule_end_date'])
 
         period_to_start_time_dict[period] = start_time
         period_to_end_time_dict[period] = end_time
@@ -433,16 +435,18 @@ def _set_regular_schedules(business_establishments: dict[str, BusinessEstablishm
 
         for schedule in schedules:
             days = schedule_days_dict[schedule]
-            start_date = schedule_start_date_dict[schedule]
-            end_date = schedule_end_date_dict[schedule]
 
             period_iri_list = schedule_to_period_dict[schedule]
 
             schedule_periods = [SchedulePeriod(start_time=period_to_start_time_dict[period],
                                                end_time=period_to_end_time_dict[period]) for period in period_iri_list]
 
-            regular_schedule = RegularSchedule(
-                days=days, start_date=start_date, end_date=end_date)
+            regular_schedule = RegularSchedule(iri=schedule, days=days)
+
+            if schedule in schedule_start_date_dict and schedule in schedule_end_date_dict:
+                regular_schedule.set_start_date(
+                    schedule_start_date_dict[schedule])
+                regular_schedule.set_end_date(schedule_end_date_dict[schedule])
 
             for schedule_period in schedule_periods:
                 regular_schedule.add_period(schedule_period)

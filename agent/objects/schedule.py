@@ -19,7 +19,36 @@ class SchedulePeriod():
             self.end_time = time(23, 59)
 
 
-class RegularSchedule():
+class Schedule():
+    # super class
+    def __init__(self, iri: str):
+        self.iri = iri
+        self.start_date = None
+        self.end_date = None
+        self.periods: list[SchedulePeriod] = []
+
+    def set_start_date(self, start_date: date):
+        self.start_date = start_date
+
+    def set_end_date(self, end_date: date):
+        self.end_date = end_date
+
+    def is_valid_for_date(self, d: date):
+        if self.start_date is not None and self.end_date is not None:
+            return self.start_date <= d <= self.end_date
+        else:
+            logger.info(
+                f"No start and end dates for schedule <{self.iri}>, assumed to be valid at all times")
+            return True
+
+    def add_period(self, schedule_period: SchedulePeriod):
+        if schedule_period not in self.periods:
+            self.periods.append(schedule_period)
+        else:
+            logger.warning("Duplicate period detected, skipping")
+
+
+class RegularSchedule(Schedule):
     # accepted recurrent schedules
     _IRI_TO_ISO_WEEKDAY_DICT = {
         'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Monday': 1,
@@ -30,22 +59,20 @@ class RegularSchedule():
         'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Saturday': 6,
         'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Sunday': 7}
 
-    def __init__(self, days, start_date: date, end_date: date):
+    def __init__(self, iri: str, days: list[str]):
+        super().__init__(iri)
         if set(days).issubset(self._IRI_TO_ISO_WEEKDAY_DICT.keys()):
             self.days = [self._IRI_TO_ISO_WEEKDAY_DICT[day] for day in days]
         else:
             raise Exception(
                 f"Unsupported recurring days, accepted ones are: {self._IRI_TO_ISO_WEEKDAY_DICT.keys()}, given: {days}")
 
-        self.periods: list[SchedulePeriod] = []
-        self.start_date = start_date
-        self.end_date = end_date
 
-    def is_valid_for_date(self, d: date):
-        return self.start_date <= d <= self.end_date
+class AdHocSchedule(Schedule):
+    # ad hoc schedule overwrites regular schedules on the entry dates
+    def __init__(self, iri: str, entry_dates: list[date]):
+        super().__init__(iri)
+        self.entry_dates = entry_dates
 
-    def add_period(self, schedule_period: SchedulePeriod):
-        if schedule_period not in self.periods:
-            self.periods.append(schedule_period)
-        else:
-            logger.warning("Duplicate period detected, skipping")
+    def get_entry_dates(self):
+        return self.get_entry_dates

@@ -9,9 +9,9 @@ WHERE {{
 
   ?schedule a fibo-fnd-fd:RegularSchedule ;
     cmns-dt:hasTimePeriod                          ?timeperiod ;
-    fibo-fnd-fd:hasRecurrenceInterval              ?reccurent_day ;
-    cmns-dt:hasEndDate/cmns-dt:hasDateValue        ?schedule_end_date ;
-    cmns-dt:hasStartDate/cmns-dt:hasDateValue      ?schedule_start_date .
+    fibo-fnd-fd:hasRecurrenceInterval              ?reccurent_day .
+  OPTIONAL {{?schedule cmns-dt:hasEndDate/cmns-dt:hasDateValue ?schedule_end_date ;
+    cmns-dt:hasStartDate/cmns-dt:hasDateValue      ?schedule_start_date .}}
 
   ?timeperiod cmns-dt:hasEndTime/cmns-dt:hasTimeValue     ?end_time .
   ?timeperiod cmns-dt:hasStartTime/cmns-dt:hasTimeValue   ?start_time .

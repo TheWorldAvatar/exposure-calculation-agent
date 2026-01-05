@@ -2,7 +2,6 @@
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from twa import agentlogging
-from enum import StrEnum
 from shapely import wkt
 from shapely.strtree import STRtree
 
@@ -10,11 +9,6 @@ from agent.objects.schedule import RegularSchedule
 from agent.objects.trip import Trip
 
 logger = agentlogging.get_logger('dev')
-
-
-class ScheduleType(StrEnum):
-    REGULAR = "regular"
-    AD_HOC = "ad hoc"
 
 
 class BusinessEstablishment():
