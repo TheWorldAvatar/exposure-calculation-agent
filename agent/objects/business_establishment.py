@@ -6,7 +6,7 @@ from enum import StrEnum
 from shapely import wkt
 from shapely.strtree import STRtree
 
-from agent.objects.schedule import Schedule
+from agent.objects.schedule import RegularSchedule
 from agent.objects.trip import Trip
 
 logger = agentlogging.get_logger('dev')
@@ -21,10 +21,10 @@ class BusinessEstablishment():
     def __init__(self, iri, wkt_string):
         self.iri = iri
         self.start_and_end = []
-        self.regular_schedules: list[Schedule] = []
+        self.regular_schedules: list[RegularSchedule] = []
 
         # key is isoweekday, each day can have multiple schedules but the schedules should not overlap
-        self.regular_schedule_dict: dict[int, list[Schedule]] = {}
+        self.regular_schedule_dict: dict[int, list[RegularSchedule]] = {}
         self.geom = wkt.loads(wkt_string)
 
     def add_business_start_and_end(self, business_start, business_end):
@@ -32,22 +32,19 @@ class BusinessEstablishment():
             raise Exception('Duplicate business_start and business_end pair')
         self.start_and_end.append((business_start, business_end))
 
-    def add_schedule(self, schedule: Schedule):
+    def add_regular_schedule(self, schedule: RegularSchedule):
         # check if new schedule overlaps with any existing schedules
-        if schedule.schedule_type == ScheduleType.REGULAR:
-            for s in self.regular_schedules:
-                if schedule.start_date <= s.end_date and s.start_date <= schedule.end_date:
-                    if set(s.days) & set(schedule.days):
-                        raise Exception('Overlapping schedule detected')
+        for s in self.regular_schedules:
+            if schedule.start_date <= s.end_date and s.start_date <= schedule.end_date:
+                if set(s.days) & set(schedule.days):
+                    raise Exception('Overlapping schedule detected')
 
-            self.regular_schedules.append(schedule)
-            for day in schedule.days:
-                if day in self.regular_schedule_dict:
-                    self.regular_schedule_dict[day].append(schedule)
-                else:
-                    self.regular_schedule_dict[day] = [schedule]
-        else:
-            raise Exception('Only supporting regular schedules at the moment')
+        self.regular_schedules.append(schedule)
+        for day in schedule.days:
+            if day in self.regular_schedule_dict:
+                self.regular_schedule_dict[day].append(schedule)
+            else:
+                self.regular_schedule_dict[day] = [schedule]
 
     def business_exists(self, lowerbound_time: datetime, upperbound_time: datetime):
         if not self.start_and_end:

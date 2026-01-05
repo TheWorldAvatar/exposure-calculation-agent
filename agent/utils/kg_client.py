@@ -203,7 +203,7 @@ class KgClient():
                 raise Exception(
                     f"Detected time class {time_class} is not supported")
         else:
-            raise Exception(f"Not able to obtain time class of {iri}")
+            raise Exception(f"Not able to obtain time class of <{iri}>")
 
 
 class RetryRemoteStoreClient:

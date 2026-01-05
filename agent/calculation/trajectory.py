@@ -2,7 +2,7 @@ from zoneinfo import ZoneInfo
 from agent.calculation.shared_utils import instantiate_result_ontop
 from agent.objects.business_establishment import BusinessEstablishment
 from agent.objects.exposure_dataset import ExposureDataset, get_exposure_dataset
-from agent.objects.schedule import Schedule, SchedulePeriod
+from agent.objects.schedule import RegularSchedule, SchedulePeriod
 from agent.utils import constants
 from agent.utils.ts_client import TimeSeriesClient
 from agent.calculation.calculation_input import CalculationInput
@@ -333,7 +333,7 @@ def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: Exp
         iri: BusinessEstablishment(iri=iri, wkt_string=combined_iri_wkt_dict[iri]) for iri in iri_set}
 
     _set_business_start_end(business_establishments)
-    _set_schedules(business_establishments)
+    _set_regular_schedules(business_establishments)
     if calculation_type == constants.TRAJECTORY_TIME_FILTER_COUNT:
         _opening_hours_filter_full_containment(
             trips_to_consider, tz, business_establishments)
@@ -368,13 +368,13 @@ def _set_business_start_end(business_establishments: dict[str, BusinessEstablish
             business_start=start, business_end=end)
 
 
-def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
+def _set_regular_schedules(business_establishments: dict[str, BusinessEstablishment]):
     from agent.utils.kg_client import kg_client
     varname = 'feature'
     values = " ".join(f"<{iri}>" for iri in business_establishments)
     values_clause = f"VALUES ?{varname} {{ {values} }}"
 
-    with open("agent/calculation/resources/opening_hours.sparql", "r") as f:
+    with open("agent/calculation/resources/regular_opening_hours.sparql", "r") as f:
         opening_hours_sparql = f.read().format(
             VALUES_CLAUSE=values_clause, VARNAME=varname)
 
@@ -382,7 +382,6 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
         opening_hours_sparql).toString())
 
     feature_to_schedule_dict = {}  # multiple schedules allowed
-    schedule_to_type_dict = {}  # single value only
     schedule_days_dict = {}  # multiple days allowed
     schedule_start_date_dict = {}  # single value only
     schedule_end_date_dict = {}  # single value only
@@ -396,7 +395,6 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
         feature = entry['feature']
         schedule = entry['schedule']
         day = entry['reccurent_day']
-        schedule_type = entry['schedule_type']
         period = entry['timeperiod']
         try:
             schedule_start_date = date.fromisoformat(
@@ -430,8 +428,6 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
         period_to_start_time_dict[period] = start_time
         period_to_end_time_dict[period] = end_time
 
-        schedule_to_type_dict[schedule] = schedule_type
-
     for feature in feature_to_schedule_dict:
         schedules = feature_to_schedule_dict[feature]
 
@@ -439,20 +435,20 @@ def _set_schedules(business_establishments: dict[str, BusinessEstablishment]):
             days = schedule_days_dict[schedule]
             start_date = schedule_start_date_dict[schedule]
             end_date = schedule_end_date_dict[schedule]
-            schedule_type = schedule_to_type_dict[schedule]
 
             period_iri_list = schedule_to_period_dict[schedule]
 
             schedule_periods = [SchedulePeriod(start_time=period_to_start_time_dict[period],
                                                end_time=period_to_end_time_dict[period]) for period in period_iri_list]
 
-            be_schedule = Schedule(
-                days=days, start_date=start_date, end_date=end_date, schedule_type=schedule_type)
+            regular_schedule = RegularSchedule(
+                days=days, start_date=start_date, end_date=end_date)
 
             for schedule_period in schedule_periods:
-                be_schedule.add_period(schedule_period)
+                regular_schedule.add_period(schedule_period)
 
-            business_establishments[feature].add_schedule(be_schedule)
+            business_establishments[feature].add_regular_schedule(
+                regular_schedule)
 
 
 def _opening_hours_filter_full_containment(trips: list[Trip], timezone: ZoneInfo, business_establishments: dict[str, BusinessEstablishment]):

@@ -1,14 +1,8 @@
 from dataclasses import dataclass
-from enum import StrEnum
 from twa import agentlogging
 from datetime import date, time
 
 logger = agentlogging.get_logger('dev')
-
-
-class ScheduleType(StrEnum):
-    REGULAR = "regular"
-    AD_HOC = "ad hoc"
 
 
 @dataclass
@@ -25,7 +19,7 @@ class SchedulePeriod():
             self.end_time = time(23, 59)
 
 
-class Schedule():
+class RegularSchedule():
     # accepted recurrent schedules
     _IRI_TO_ISO_WEEKDAY_DICT = {
         'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Monday': 1,
@@ -36,25 +30,16 @@ class Schedule():
         'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Saturday': 6,
         'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Sunday': 7}
 
-    _IRI_TO_SCHEDULE_TYPE = {
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/RegularSchedule': ScheduleType.REGULAR,
-        'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/AdHocSchedule': ScheduleType.AD_HOC}
-
-    def __init__(self, days, start_date: date, end_date: date, schedule_type: str):
+    def __init__(self, days, start_date: date, end_date: date):
         if set(days).issubset(self._IRI_TO_ISO_WEEKDAY_DICT.keys()):
             self.days = [self._IRI_TO_ISO_WEEKDAY_DICT[day] for day in days]
         else:
             raise Exception(
                 f"Unsupported recurring days, accepted ones are: {self._IRI_TO_ISO_WEEKDAY_DICT.keys()}, given: {days}")
 
-        if schedule_type not in self._IRI_TO_SCHEDULE_TYPE.keys():
-            raise Exception(
-                f"Unsupported schedule type, accepted types: {self._IRI_TO_SCHEDULE_TYPE.keys()}")
-
         self.periods: list[SchedulePeriod] = []
         self.start_date = start_date
         self.end_date = end_date
-        self.schedule_type = self._IRI_TO_SCHEDULE_TYPE[schedule_type]
 
     def is_valid_for_date(self, d: date):
         return self.start_date <= d <= self.end_date
