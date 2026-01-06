@@ -2,7 +2,7 @@ from zoneinfo import ZoneInfo
 from agent.calculation.shared_utils import instantiate_result_ontop
 from agent.objects.business_establishment import BusinessEstablishment
 from agent.objects.exposure_dataset import ExposureDataset, get_exposure_dataset
-from agent.objects.schedule import RegularSchedule, SchedulePeriod
+from agent.objects.schedule import AdHocSchedule, RegularSchedule, SchedulePeriod
 from agent.utils import constants
 from agent.utils.ts_client import TimeSeriesClient
 from agent.calculation.calculation_input import CalculationInput
@@ -334,6 +334,7 @@ def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: Exp
 
     _set_business_start_end(business_establishments)
     _set_regular_schedules(business_establishments)
+    _set_adhoc_schedules(business_establishments)
     if calculation_type == constants.TRAJECTORY_TIME_FILTER_COUNT:
         _opening_hours_filter_full_containment(
             trips_to_consider, tz, business_establishments)
@@ -368,6 +369,87 @@ def _set_business_start_end(business_establishments: dict[str, BusinessEstablish
             business_start=start, business_end=end)
 
 
+def _set_adhoc_schedules(business_establishments: dict[str, BusinessEstablishment]):
+    from agent.utils.kg_client import kg_client
+    varname = 'feature'
+    values = " ".join(f"<{iri}>" for iri in business_establishments)
+    values_clause = f"VALUES ?{varname} {{ {values} }}"
+
+    with open("agent/calculation/resources/adhoc_opening_hours.sparql", "r") as f:
+        opening_hours_sparql = f.read().format(
+            VALUES_CLAUSE=values_clause, VARNAME=varname)
+
+    query_result = json.loads(kg_client.remote_store_client.executeQuery(
+        opening_hours_sparql).toString())
+
+    feature_to_schedule_dict = {}  # multiple schedules allowed
+    schedule_start_date_dict = {}  # single value only, optional
+    schedule_end_date_dict = {}  # single value only, optional
+    schedule_to_period_dict = {}  # multiple periods allowed, e.g. 1000-1200, 1300-1700
+    period_to_start_time_dict = {}  # single value only, optional
+    period_to_end_time_dict = {}  # single value only, optional
+    schedule_to_entries_dict = {}  # multiple entries allowed
+
+    for entry in query_result:
+        # compulsory variables
+        feature = entry['feature']
+        schedule = entry['schedule']
+        entry_date = entry['entry_date']
+
+        if feature not in feature_to_schedule_dict:
+            feature_to_schedule_dict[feature] = set()
+
+        feature_to_schedule_dict[feature].add(schedule)
+
+        if schedule not in schedule_to_entries_dict:
+            schedule_to_entries_dict[schedule] = set()
+
+        if schedule not in schedule_to_period_dict:
+            schedule_to_period_dict[schedule] = set()
+
+        schedule_to_entries_dict[schedule].add(date.fromisoformat(entry_date))
+
+        if 'schedule_start_date' in entry:
+            schedule_start_date_dict[schedule] = date.fromisoformat(
+                entry['schedule_start_date'])
+
+        if 'schedule_end_date' in entry:
+            schedule_end_date_dict[schedule] = date.fromisoformat(
+                entry['schedule_end_date'])
+
+        if 'timeperiod' in entry:
+            # if period does not exist it is assumed to be closed for the day
+            period = entry['timeperiod']
+            schedule_to_period_dict[schedule].add(period)
+            period_to_start_time_dict[period] = time.fromisoformat(
+                entry['start_time'])
+            period_to_end_time_dict[period] = time.fromisoformat(
+                entry['end_time'])
+
+    for feature in feature_to_schedule_dict:
+        schedules = feature_to_schedule_dict[feature]
+
+        for schedule in schedules:
+            entry_dates = schedule_to_entries_dict[schedule]
+
+            schedule_periods = [SchedulePeriod(start_time=period_to_start_time_dict[period],
+                                               end_time=period_to_end_time_dict[period]) for period in schedule_to_period_dict[schedule]]
+
+            ad_hoc_schedule = AdHocSchedule(
+                iri=schedule, entry_dates=entry_dates)
+
+            if schedule in schedule_start_date_dict and schedule in schedule_end_date_dict:
+                ad_hoc_schedule.set_start_date(
+                    schedule_start_date_dict[schedule])
+                ad_hoc_schedule.set_end_date(schedule_end_date_dict[schedule])
+
+            for schedule_period in schedule_periods:
+                ad_hoc_schedule.add_period(schedule_period)
+
+            business_establishments[feature].add_ad_hoc_schedule(
+                ad_hoc_schedule)
+
+
 def _set_regular_schedules(business_establishments: dict[str, BusinessEstablishment]):
     from agent.utils.kg_client import kg_client
     varname = 'feature'
@@ -392,17 +474,10 @@ def _set_regular_schedules(business_establishments: dict[str, BusinessEstablishm
     # one schedule can repeat over multiple days, but can only have one time range
     # please refer to the template for the variable names
     for entry in query_result:
+        # compulsory variables
         feature = entry['feature']
         schedule = entry['schedule']
         day = entry['reccurent_day']
-        period = entry['timeperiod']
-        try:
-            start_time = time.fromisoformat(entry['start_time'])
-            end_time = time.fromisoformat(entry['end_time'])
-        except Exception as e:
-            logger.error(e)
-            logger.error(entry)
-            continue
 
         if feature not in feature_to_schedule_dict:
             feature_to_schedule_dict[feature] = set()
@@ -417,8 +492,6 @@ def _set_regular_schedules(business_establishments: dict[str, BusinessEstablishm
         if schedule not in schedule_to_period_dict:
             schedule_to_period_dict[schedule] = set()
 
-        schedule_to_period_dict[schedule].add(period)
-
         if 'schedule_start_date' in entry:
             schedule_start_date_dict[schedule] = date.fromisoformat(
                 entry['schedule_start_date'])
@@ -427,8 +500,14 @@ def _set_regular_schedules(business_establishments: dict[str, BusinessEstablishm
             schedule_end_date_dict[schedule] = date.fromisoformat(
                 entry['schedule_end_date'])
 
-        period_to_start_time_dict[period] = start_time
-        period_to_end_time_dict[period] = end_time
+        if 'timeperiod' in entry:
+            # if period does not exist it is assumed to be closed for the day
+            period = entry['timeperiod']
+            schedule_to_period_dict[schedule].add(period)
+            period_to_start_time_dict[period] = time.fromisoformat(
+                entry['start_time'])
+            period_to_end_time_dict[period] = time.fromisoformat(
+                entry['end_time'])
 
     for feature in feature_to_schedule_dict:
         schedules = feature_to_schedule_dict[feature]
@@ -436,10 +515,8 @@ def _set_regular_schedules(business_establishments: dict[str, BusinessEstablishm
         for schedule in schedules:
             days = schedule_days_dict[schedule]
 
-            period_iri_list = schedule_to_period_dict[schedule]
-
             schedule_periods = [SchedulePeriod(start_time=period_to_start_time_dict[period],
-                                               end_time=period_to_end_time_dict[period]) for period in period_iri_list]
+                                               end_time=period_to_end_time_dict[period]) for period in schedule_to_period_dict[schedule]]
 
             regular_schedule = RegularSchedule(iri=schedule, days=days)
 
@@ -501,7 +578,7 @@ def _opening_hours_filter_closest_point(trips: list[Trip], timezone: ZoneInfo, b
 
             if business_establishment.business_exists(lowerbound_time=trip_lb, upperbound_time=trip_ub) \
                     and _is_open_trip_partial_overlap(trip_lb=trip_lb, trip_ub=trip_ub, business_establishment=business_establishment) \
-                    and business_establishment.is_open_closest_point(timezone=timezone, trip=trip):
+                    and business_establishment.is_open_closest_point(trip=trip):
                 number += 1
                 iri_list.append(iri)
 

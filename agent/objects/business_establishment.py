@@ -5,7 +5,7 @@ from twa import agentlogging
 from shapely import wkt
 from shapely.strtree import STRtree
 
-from agent.objects.schedule import RegularSchedule
+from agent.objects.schedule import RegularSchedule, AdHocSchedule
 from agent.objects.trip import Trip
 
 logger = agentlogging.get_logger('dev')
@@ -15,6 +15,7 @@ class BusinessEstablishment():
     def __init__(self, iri, wkt_string):
         self.iri = iri
         self.start_and_end = []
+        self.ad_hoc_schedule_dict: dict[date, AdHocSchedule] = {}
         self.regular_schedules: list[RegularSchedule] = []
 
         # key is isoweekday, each day can have multiple schedules but the schedules should not overlap
@@ -29,16 +30,39 @@ class BusinessEstablishment():
     def add_regular_schedule(self, schedule: RegularSchedule):
         # check if new schedule overlaps with any existing schedules
         for s in self.regular_schedules:
-            if schedule.start_date <= s.end_date and s.start_date <= schedule.end_date:
-                if set(s.days) & set(schedule.days):
-                    raise Exception('Overlapping schedule detected')
+            if (
+                schedule.start_date
+                and schedule.end_date
+                and s.start_date
+                and s.end_date
+                and schedule.start_date <= s.end_date and s.start_date <= schedule.end_date
+                and set(s.days) & set(schedule.days)
+            ):
+                raise Exception('Overlapping schedule detected')
 
         self.regular_schedules.append(schedule)
+
         for day in schedule.days:
             if day in self.regular_schedule_dict:
                 self.regular_schedule_dict[day].append(schedule)
             else:
                 self.regular_schedule_dict[day] = [schedule]
+
+    def add_ad_hoc_schedule(self, schedule: AdHocSchedule):
+        # check if new schedule overlaps with any existing schedules
+        for s in self.ad_hoc_schedule_dict.values():
+            if (
+                schedule.start_date
+                and schedule.end_date
+                and s.start_date
+                and s.end_date
+                and schedule.start_date <= s.end_date and s.start_date <= schedule.end_date
+                and set(s.entry_dates) & set(schedule.entry_dates)
+            ):
+                raise Exception('Overlapping schedule detected')
+
+        for entry_date in schedule.entry_dates:
+            self.ad_hoc_schedule_dict[entry_date] = schedule
 
     def business_exists(self, lowerbound_time: datetime, upperbound_time: datetime):
         if not self.start_and_end:
@@ -55,16 +79,21 @@ class BusinessEstablishment():
 
     def is_open_full_containment(self, lowerbound_time: datetime, upperbound_time: datetime):
         # upper and lowerbound times are completely within opening hours
-        if not self.regular_schedules:
+        # if ad hoc schedule exists, it overwrites the regular schedules
+        if lowerbound_time.date() in self.ad_hoc_schedule_dict:
+            schedules = [self.ad_hoc_schedule_dict[lowerbound_time.date()]]
+        elif not self.regular_schedule_dict:
             logger.info(
                 f"<{self.iri}> has no regular schedules, assumed to be open at all times")
             return True
-
-        if lowerbound_time.isoweekday() not in self.regular_schedule_dict.keys():
+        elif lowerbound_time.isoweekday() not in self.regular_schedule_dict:
             # there is no schedule for the day
             return False
+        else:
+            schedules = self.regular_schedule_dict[lowerbound_time.isoweekday(
+            )]
 
-        for schedule in self.regular_schedule_dict[lowerbound_time.isoweekday()]:
+        for schedule in schedules:
             # check if trip is within validity of schedule, then obtain opening hours of that specific day
             if schedule.is_valid_for_date(lowerbound_time.date()):
                 return any(period.start_time <= lowerbound_time.time() <= upperbound_time.time() <= period.end_time for period in schedule.periods)
@@ -72,30 +101,29 @@ class BusinessEstablishment():
         return False
 
     def is_open_partial_overlap(self, lowerbound_time: datetime, upperbound_time: datetime):
-        if not self.regular_schedules:
+        # if ad hoc schedule exists, it overwrites the regular schedules
+        if lowerbound_time.date() in self.ad_hoc_schedule_dict:
+            schedules = [self.ad_hoc_schedule_dict[lowerbound_time.date()]]
+        elif not self.regular_schedule_dict:
             logger.info(
                 f"<{self.iri}> has no regular schedules, assumed to be open at all times")
             return True
-
-        if lowerbound_time.isoweekday() not in self.regular_schedule_dict.keys():
+        elif lowerbound_time.isoweekday() not in self.regular_schedule_dict:
             # there is no schedule for the day
             return False
+        else:
+            schedules = self.regular_schedule_dict[lowerbound_time.isoweekday(
+            )]
 
-        for schedule in self.regular_schedule_dict[lowerbound_time.isoweekday()]:
+        for schedule in schedules:
             # check if trip is within validity of schedule, then obtain opening hours of that specific day
             if schedule.is_valid_for_date(lowerbound_time.date()):
                 return any(period.start_time <= lowerbound_time.time() <= period.end_time or period.start_time <= upperbound_time.time() <= period.end_time for period in schedule.periods)
 
         return False
 
-    def is_open_closest_point(self, timezone: ZoneInfo, trip: Trip):
-        # upper and lowerbound times are completely within opening hours
-        if not self.regular_schedules:
-            logger.info(
-                f"<{self.iri}> has no regular schedules, assumed to be open at all times")
-            return True
-
-        # finds the closest sensor point within the given trip
+    def is_open_closest_point(self, trip: Trip):
+        # finds the closest point within the trip to this business establishment
         tree = STRtree(trip.points_list)
         closest_point = trip.points_list[tree.nearest(self.geom)]
 
@@ -106,18 +134,29 @@ class BusinessEstablishment():
 
         # check if any time value falls within any opening hours
         exposed = False
+
+        if all(matched_time.date() not in self.ad_hoc_schedule_dict for matched_time in matched_time_list) and not self.regular_schedule_dict:
+            logger.info(
+                f"<{self.iri}> has no regular schedules and matching ad hoc schedules, assumed to be open at all times")
+            exposed = True
+
         for matched_time in matched_time_list:
             if exposed:
                 return True  # terminate loop if there is already one exposed point
-            matched_time_converted = matched_time.astimezone(timezone)
 
-            if matched_time_converted.isoweekday() not in self.regular_schedule_dict.keys():
+            # if ad hoc schedule exists, it overwrites the regular schedules
+            if matched_time.date() in self.ad_hoc_schedule_dict:
+                schedules = [self.ad_hoc_schedule_dict[matched_time.date()]]
+            elif matched_time.isoweekday() not in self.regular_schedule_dict:
                 # there is no schedule for the day
                 continue
+            else:
+                schedules = self.regular_schedule_dict[matched_time.isoweekday(
+                )]
 
-            for schedule in self.regular_schedule_dict[matched_time_converted.isoweekday()]:
+            for schedule in schedules:
                 # check if trip is within validity of schedule, then obtain opening hours of that specific day
-                if schedule.is_valid_for_date(matched_time_converted.date()):
-                    exposed = any(period.start_time <= matched_time_converted.time(
+                if schedule.is_valid_for_date(matched_time.date()):
+                    exposed = any(period.start_time <= matched_time.time(
                     ) <= period.end_time for period in schedule.periods)
         return exposed

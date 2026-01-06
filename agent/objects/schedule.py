@@ -59,7 +59,7 @@ class RegularSchedule(Schedule):
         'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Saturday': 6,
         'https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/Sunday': 7}
 
-    def __init__(self, iri: str, days: list[str]):
+    def __init__(self, iri: str, days: set[str]):
         super().__init__(iri)
         if set(days).issubset(self._IRI_TO_ISO_WEEKDAY_DICT.keys()):
             self.days = [self._IRI_TO_ISO_WEEKDAY_DICT[day] for day in days]
@@ -70,9 +70,6 @@ class RegularSchedule(Schedule):
 
 class AdHocSchedule(Schedule):
     # ad hoc schedule overwrites regular schedules on the entry dates
-    def __init__(self, iri: str, entry_dates: list[date]):
+    def __init__(self, iri: str, entry_dates: set[date]):
         super().__init__(iri)
         self.entry_dates = entry_dates
-
-    def get_entry_dates(self):
-        return self.get_entry_dates
