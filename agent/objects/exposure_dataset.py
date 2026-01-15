@@ -11,8 +11,6 @@ class ExposureDataset:
     table_name: str
     url: str
     geometry_column: str = constants.VECTOR_GEOMETRY_COLUMN
-    # this property is used for area weighted calculation, it is the value associated with a polygon
-    value_column: Optional[str] = None
     # used for area weighted calculation, pre-calculated area of a polygon (converted from pixel)
     area_column: Optional[str] = None
     # used for time filtering
@@ -28,15 +26,12 @@ def get_exposure_dataset(dataset_iri):
     PREFIX dcterms: <http://purl.org/dc/terms/>
     PREFIX dcat: <http://www.w3.org/ns/dcat#>
 
-    SELECT ?url ?table_name ?geometry_column ?value_column ?area_column ?iri_column ?start_date ?end_date
+    SELECT ?url ?table_name ?geometry_column ?area_column ?iri_column ?start_date ?end_date
     WHERE {{
         ?catalog <{constants.DATASET_PREDICATE}> <{dataset_iri}>.
         <{dataset_iri}> <{constants.DCTERM_TITLE}> ?table_name.
         OPTIONAL {{
             <{dataset_iri}> <{constants.HAS_GEOMETRY_COLUMN}> ?geometry_column.
-        }}
-        OPTIONAL {{
-            <{dataset_iri}> <{constants.HAS_VALUE_COLUMN}> ?value_column.
         }}
         OPTIONAL {{
             <{dataset_iri}> <{constants.HAS_AREA_COLUMN}> ?area_column.
@@ -72,11 +67,6 @@ def get_exposure_dataset(dataset_iri):
     else:
         # default name provided by gdal
         exposure_dataset.geometry_column = 'wkb_geometry'
-
-    if 'value_column' in query_result[0]:
-        exposure_dataset.value_column = query_result[0]['value_column']
-    else:
-        exposure_dataset.value_column = 'val'
 
     if 'area_column' in query_result[0]:
         exposure_dataset.area_column = query_result[0]['area_column']

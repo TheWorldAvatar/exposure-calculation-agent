@@ -43,6 +43,10 @@ def trigger_calculation():
     # query to obtain subject IRIs
     subject_query_file = request.args.get('subject_query_file')
 
+    dataset_filter = request.args.get('dataset_filter')
+    if dataset_filter:
+        dataset_filter = json.loads(dataset_filter)
+
     if subject is not None and subject_query_file is not None:
         raise Exception('Provide subject or subject_query_file, but not both')
 
@@ -79,7 +83,7 @@ def trigger_calculation():
 
     # this will initialise a calculation if it does not exist and return the instantiated iri, or return an existing iri
     calculation_iri = initialise_calculation(CalculationMetadata(
-        rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound))
+        rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, dataset_filter=dataset_filter))
 
     logger.info('Calling core calculation agent')
 

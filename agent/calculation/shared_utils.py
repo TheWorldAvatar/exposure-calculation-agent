@@ -89,6 +89,7 @@ def _upload_ontop_mapping():
 
 
 def get_iri_to_point_dict(subject):
+    # returns points in EPSG:3857, to be used for ST_DWithin in queries
     from agent.utils.kg_client import kg_client
 
     iri_to_point_dict = {}
@@ -132,6 +133,57 @@ def get_iri_to_point_dict(subject):
             iri_to_point_dict[sub] = projected_geom
 
     return iri_to_point_dict
+
+
+def get_iri_to_buffer_dict(subject, distance: float):
+    # returns buffers in 4326
+    from agent.utils.kg_client import kg_client
+
+    iri_to_buffer_dict = {}
+    transformer = Transformer.from_crs(
+        "EPSG:4326", "EPSG:3857", always_xy=True)
+
+    transformer_back = Transformer.from_crs(
+        "EPSG:3857", "EPSG:4326", always_xy=True)
+
+    query_template = """
+    SELECT ?subject ?wkt
+    WHERE {{
+        VALUES ?subject {{{values}}}.
+        ?subject <http://www.opengis.net/ont/geosparql#asWKT> ?wkt.
+    }}
+    """
+
+    logger.info(
+        'Querying geometries of subjects, number of subjects: ' + str(len(subject)))
+
+    query_list = []
+    # submit queries in batches to avoid crashing ontop
+    for chunk in _chunk_list(subject):
+        values = " ".join(f"<{s}>" for s in chunk)
+        query = query_template.format(values=values)
+        query_list.append(query)
+
+    for query in query_list:
+        query_result = json.loads(
+            kg_client.remote_store_client.executeQuery(query).toString())
+
+        for row in query_result:
+            sub = row['subject']
+            wkt_literal = row['wkt']
+
+            # strip RDF literal IRI, i.e. ^^<http://www.opengis.net/ont/geosparql#wktLiteral>
+            match = re.match(r'^"(.+)"\^\^<.+>$', wkt_literal)
+            if match:
+                geom = wkt.loads(match.group(1))
+            else:
+                geom = wkt.loads(wkt_literal)
+
+            projected_geom = transform(transformer.transform, geom)
+            iri_to_buffer_dict[sub] = transform(
+                transformer_back.transform, projected_geom.buffer(distance))
+
+    return iri_to_buffer_dict
 
 
 def _chunk_list(values, chunk_size=10000):

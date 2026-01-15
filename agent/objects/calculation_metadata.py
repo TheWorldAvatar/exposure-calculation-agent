@@ -1,6 +1,6 @@
 import json
+import uuid
 from agent.utils import constants
-from agent.utils.constants import HAS_DISTANCE, HAS_LOWERBOUND, HAS_UPPERBOUND
 from dateutil.parser import parse
 
 
@@ -9,12 +9,13 @@ class CalculationMetadataException(Exception):
 
 
 class CalculationMetadata():
-    def __init__(self, rdf_type, distance, upperbound=None, lowerbound=None, iri=None):
+    def __init__(self, rdf_type, distance: float, upperbound=None, lowerbound=None, iri=None, dataset_filter: dict = {}):
         self.rdf_type = rdf_type
         self.distance = distance
         self.upperbound = upperbound
         self.lowerbound = lowerbound
         self.iri = iri
+        self.dataset_filter = dataset_filter
 
     def get_query(self, var: str) -> str:
         query = f"""
@@ -30,21 +31,34 @@ class CalculationMetadata():
     def get_insert_query(self, calculation_iri: str) -> str:
         insert_triples = [f"<{calculation_iri}> a <{self.rdf_type}>."]
         insert_triples.append(
-            f"<{calculation_iri}> <{HAS_DISTANCE}> {self.distance}.")
+            f"<{calculation_iri}> <{constants.HAS_DISTANCE}> {self.distance}.")
 
         if self.upperbound is not None and is_integer(self.upperbound):
             insert_triples.append(
-                f"<{calculation_iri}> <{HAS_UPPERBOUND}> {self.upperbound}.")
+                f"<{calculation_iri}> <{constants.HAS_UPPERBOUND}> {self.upperbound}.")
         elif self.upperbound is not None and is_datetime(self.upperbound):
             insert_triples.append(
-                f"<{calculation_iri}> <{HAS_UPPERBOUND}> \"{self.upperbound}\"^^xsd:dateTime.")
+                f"<{calculation_iri}> <{constants.HAS_UPPERBOUND}> \"{self.upperbound}\"^^xsd:dateTime.")
 
         if self.lowerbound is not None and is_integer(self.lowerbound):
             insert_triples.append(
-                f"<{calculation_iri}> <{HAS_LOWERBOUND}> {self.lowerbound}.")
+                f"<{calculation_iri}> <{constants.HAS_LOWERBOUND}> {self.lowerbound}.")
         elif self.lowerbound is not None and is_datetime(self.lowerbound):
             insert_triples.append(
-                f"<{calculation_iri}> <{HAS_LOWERBOUND}> \"{self.lowerbound}\"^^xsd:dateTime.")
+                f"<{calculation_iri}> <{constants.HAS_LOWERBOUND}> \"{self.lowerbound}\"^^xsd:dateTime.")
+
+        if self.dataset_filter:
+            for key, value in self.dataset_filter.items():
+                dataset_filter_iri = constants.PREFIX_EXPOSURE + \
+                    'datasetfilter/' + str(uuid.uuid4())
+                insert_triples.append(
+                    f"<{dataset_filter_iri}> a <{constants.DATASET_FITLER}>.")
+                insert_triples.append(
+                    f"<{calculation_iri}> <{constants.HAS_DATASET_FILTER}> <{dataset_filter_iri}>.")
+                insert_triples.append(
+                    f"<{dataset_filter_iri}> <{constants.HAS_FILTER_COLUMN}> '{key}'.")
+                insert_triples.append(
+                    f"<{dataset_filter_iri}> <{constants.HAS_FILTER_VALUE}> {format_rdf_literal(value)}.")
 
         query = f"""
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -56,27 +70,36 @@ class CalculationMetadata():
         return query
 
     def __get_where_clauses(self, var: str) -> str:
-        where_clauses = [f"?{var} <{HAS_DISTANCE}> {self.distance}."]
+        where_clauses = [f"?{var} <{constants.HAS_DISTANCE}> {self.distance}."]
 
         if self.upperbound is not None and is_integer(self.upperbound):
             where_clauses.append(
-                f"?{var} <{HAS_UPPERBOUND}> {self.upperbound}.")
+                f"?{var} <{constants.HAS_UPPERBOUND}> {self.upperbound}.")
         elif self.upperbound is not None and is_datetime(self.upperbound):
             where_clauses.append(
-                f"?{var} <{HAS_UPPERBOUND}> \"{self.upperbound}\"^^xsd:dateTime.")
+                f"?{var} <{constants.HAS_UPPERBOUND}> \"{self.upperbound}\"^^xsd:dateTime.")
         elif self.upperbound is not None:
             raise CalculationMetadataException(
                 'Unsupported format of upperbound')
 
         if self.lowerbound is not None and is_integer(self.lowerbound):
             where_clauses.append(
-                f"?{var} <{HAS_LOWERBOUND}> {self.lowerbound}.")
+                f"?{var} <{constants.HAS_LOWERBOUND}> {self.lowerbound}.")
         elif self.lowerbound is not None and is_datetime(self.lowerbound):
             where_clauses.append(
-                f"?{var} <{HAS_LOWERBOUND}> \"{self.lowerbound}\"xsd:dateTime.")
+                f"?{var} <{constants.HAS_LOWERBOUND}> \"{self.lowerbound}\"xsd:dateTime.")
         elif self.lowerbound is not None:
             raise CalculationMetadataException(
                 'Unsupported format of lowerbound')
+
+        if self.dataset_filter:
+            i = 0
+            for key, value in self.dataset_filter.items():
+                where_clauses.append(
+                    f"?{var} <{constants.HAS_DATASET_FILTER}> ?filter{i}.")
+                where_clauses.append(
+                    f"?filter{i} <{constants.HAS_FILTER_COLUMN}> '{key}'; <{constants.HAS_FILTER_VALUE}> {format_rdf_literal(value)}.")
+                i += 1
 
         return "\n".join(where_clauses)
 
@@ -84,38 +107,52 @@ class CalculationMetadata():
 def get_calculation_metadata(iri: str) -> CalculationMetadata:
     from agent.utils.kg_client import kg_client
     query = f"""
-    SELECT ?rdf_type ?distance ?upperbound ?lowerbound
+    SELECT ?rdf_type ?distance ?upperbound ?lowerbound ?filter_column ?filter_value
     WHERE
     {{
         <{iri}> a ?rdf_type.
         OPTIONAL{{<{iri}> <{constants.HAS_DISTANCE}> ?distance.}}
         OPTIONAL{{<{iri}> <{constants.HAS_UPPERBOUND}> ?upperbound.}}
         OPTIONAL{{<{iri}> <{constants.HAS_LOWERBOUND}> ?lowerbound.}}
+        OPTIONAL{{<{iri}> <{constants.HAS_DATASET_FILTER}> ?dataset_filter.
+            ?dataset_filter <{constants.HAS_FILTER_COLUMN}> ?filter_column;
+            <{constants.HAS_FILTER_VALUE}> ?filter_value.}}
     }}
     """
 
-    query_results = kg_client.remote_store_client.executeQuery(query)
+    query_results = json.loads(
+        kg_client.remote_store_client.executeQuery(query).toString())
 
-    # convert to python dict
-    if query_results.length() != 1:
-        raise Exception(
-            'Expected one set of results in get_calculation_metadata')
+    rdf_type = None
+    distance = None
+    upperbound = None
+    lowerbound = None
+    dataset_filter = {}
+    for row in query_results:
+        if rdf_type is not None and rdf_type != row['rdf_type']:
+            raise Exception('more than 1 rdf type')
+        rdf_type = row['rdf_type']
 
-    metadata = json.loads(query_results.getJSONObject(0).toString())
-    rdf_type = metadata['rdf_type']
-    distance = metadata['distance']
+        if distance is not None and distance != float(row['distance']):
+            raise Exception('unexpected distance value')
+        distance = float(row['distance'])
 
-    if 'upperbound' in metadata:
-        upperbound = metadata['upperbound']
-    else:
-        upperbound = None
+        if 'upperbound' in row:
+            if upperbound is not None and upperbound != row['upperbound']:
+                raise Exception('unexpected upperbound value')
+            else:
+                upperbound = row['upperbound']
 
-    if 'lowerbound' in metadata:
-        lowerbound = metadata['lowerbound']
-    else:
-        lowerbound = None
+        if 'lowerbound' in row:
+            if lowerbound is not None and lowerbound != row['lowerbound']:
+                raise Exception('unexpected lowerbound value')
+            else:
+                lowerbound = row['lowerbound']
 
-    return CalculationMetadata(rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, iri=iri)
+        if 'filter_column' in row:
+            dataset_filter[row['filter_column']] = row['filter_value']
+
+    return CalculationMetadata(rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, iri=iri, dataset_filter=dataset_filter)
 
 
 def is_integer(s: str) -> bool:
@@ -132,3 +169,10 @@ def is_datetime(s: str) -> bool:
         return True
     except (ValueError, TypeError):
         return False
+
+
+def format_rdf_literal(value):
+    if isinstance(value, str):
+        return f"'{value}'"
+    else:
+        return value
