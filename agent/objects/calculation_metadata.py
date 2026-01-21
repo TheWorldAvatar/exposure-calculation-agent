@@ -93,15 +93,43 @@ class CalculationMetadata():
                 'Unsupported format of lowerbound')
 
         if self.dataset_filter:
-            i = 0
-            for key, value in self.dataset_filter.items():
-                where_clauses.append(
-                    f"?{var} <{constants.HAS_DATASET_FILTER}> ?filter{i}.")
-                where_clauses.append(
-                    f"?filter{i} <{constants.HAS_FILTER_COLUMN}> '{key}'; <{constants.HAS_FILTER_VALUE}> {format_rdf_literal(value)}.")
-                i += 1
+            where_clauses.extend(get_dataset_filter_where_clauses(
+                calc_var=var, dataset_filter=self.dataset_filter))
 
         return "\n".join(where_clauses)
+
+
+def get_dataset_filter_where_clauses(calc_var: str, dataset_filter: dict):
+    where_clauses = []
+    i = 0
+    for key, value in dataset_filter.items():
+        where_clauses.append(
+            f"?{calc_var} <{constants.HAS_DATASET_FILTER}> ?filter{i}.")
+        where_clauses.append(
+            f"?filter{i} <{constants.HAS_FILTER_COLUMN}> '{key}'; <{constants.HAS_FILTER_VALUE}> {format_rdf_literal(value)}.")
+        i += 1
+
+    # no extra pairs allowed
+    values_block = "\n".join(
+        f'("{k}" {format_rdf_literal(v)})'
+        for k, v in dataset_filter.items()
+    )
+    where_clauses.append(f"""
+        FILTER NOT EXISTS {{
+            ?{calc_var} <{constants.HAS_DATASET_FILTER}> ?fExtra .
+            ?fExtra <{constants.HAS_FILTER_COLUMN}> ?c ;
+                    <{constants.HAS_FILTER_VALUE}>  ?v .
+
+            FILTER NOT EXISTS {{
+                VALUES (?col ?val) {{
+                    {values_block}
+                }}
+            FILTER (?c = ?col && ?v = ?val)
+            }}
+        }}          
+    """)
+
+    return where_clauses
 
 
 def get_calculation_metadata(iri: str) -> CalculationMetadata:

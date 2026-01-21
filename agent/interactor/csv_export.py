@@ -2,6 +2,7 @@ import re
 from flask import Blueprint, Response, request
 from twa import agentlogging
 from agent.interactor.trigger_calculation import get_dataset_iri
+from agent.objects.calculation_metadata import CalculationMetadata, format_rdf_literal, get_dataset_filter_where_clauses
 import agent.utils.constants as constants
 from pathlib import Path
 from rdflib.plugins.sparql.parser import parseQuery
@@ -20,6 +21,88 @@ logger = agentlogging.get_logger('dev')
 
 csv_export_bp = Blueprint(
     'csv_export', __name__, url_prefix='/csv_export')
+
+
+@csv_export_bp.route('/ndvi', methods=['GET'])
+def ndvi():
+    # IRI(s) of subject to calculate
+    subject = request.args.get('subject')
+
+    if subject is not None:
+        subject = [subject]
+
+    exposure_table = request.args.get('exposure_table')
+    exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
+    rdf_type = request.args.get('rdf_type')
+
+    # query to obtain subject IRIs
+    subject_query_file = request.args.get('subject_query_file')
+
+    # query for user facing label of subject IRI, e.g. postcode value
+    subject_label_query_file = request.args.get('subject_label_query_file')
+
+    if subject is not None and subject_query_file is not None:
+        raise Exception('Provide subject or subject_query_file, but not both')
+
+    dataset_filter = request.args.getlist('dataset_filter')
+    dataset_filters = []
+    for d in dataset_filter:
+        dataset_filters.append(json.loads(d))
+
+    first_keys = set(dataset_filters[0].keys())
+    if not all(set(d.keys()) == first_keys for d in dataset_filters):
+        raise Exception(
+            'Provided dataset filters should have the same keys')
+
+    calculation_metadata_list = _get_calculations(
+        rdf_type=rdf_type, dataset_filters=dataset_filters)
+
+    # do SPARQL query to obtain a list of subject IRIs
+    if subject_query_file is not None:
+        subject = _get_subjects(subject_query_file=subject_query_file)
+
+    # returns IRI to label
+    logger.info('Querying label')
+    subject_to_label_dict = _get_subject_to_label_dict(
+        subject_label_query_file=subject_label_query_file, subjects=subject)
+
+    logger.info('Getting subject coordinates')
+    subject_to_point_dict = _get_subject_to_point_dict(subject=subject)
+
+    # keys for the result dictionary
+    filter_columns = sorted(list(dataset_filters[0].keys()))
+
+    # dict with multiple levels, e.g. overall_result[distance][key1][key2]
+    # where key1, key2 are generated dynamically
+    overall_result = {}
+    logger.info('Querying results')
+    for calculation in calculation_metadata_list:
+        subject_to_result_dict = _get_subject_to_result_dict_calc_iri(
+            subject=subject, exposure=exposure_dataset_iri, calculation_iri=calculation.iri)
+
+        # prepare keys for overall result dict
+        result_keys = []
+        result_keys.append(round(calculation.distance))
+
+        for filter_column in filter_columns:
+            result_keys.append(calculation.dataset_filter[filter_column])
+
+        current = overall_result
+        for k in result_keys[:-1]:
+            current = current.setdefault(k, {})
+
+        current[result_keys[-1]] = subject_to_result_dict
+
+    logger.info('Producing csv file')
+    header_keys = filter_columns
+    header_keys.insert(0, 'distance')
+    header_keys = [s[0] for s in header_keys]  # take first letter only
+    csv = _create_csv_result_keys(overall_result=overall_result, header_keys=header_keys,
+                                  subject_to_label_dict=subject_to_label_dict, subject_to_point_dict=subject_to_point_dict)
+
+    response = Response(csv.getvalue(), mimetype='text/csv')
+    response.headers["Content-Disposition"] = "attachment; filename=data.csv"
+    return response
 
 
 @csv_export_bp.route('/greenspace', methods=['GET'])
@@ -185,6 +268,35 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
     return subject_to_result_dict
 
 
+def _get_subject_to_result_dict_calc_iri(subject, exposure, calculation_iri):
+    from agent.utils.kg_client import kg_client
+    subject_to_result_dict = defaultdict(lambda: defaultdict(dict))
+
+    for chunk in tqdm(_chunk_list(subject), mininterval=60, ncols=80, file=sys.stdout):
+        values = " ".join(f"<{s}>" for s in chunk)
+        query = f"""
+        SELECT ?subject ?value
+        WHERE {{
+            VALUES ?subject {{{values}}}
+            ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
+                <{constants.IS_DERIVED_FROM}> <{exposure}>.
+            ?result <{constants.BELONGS_TO}> ?derivation;
+                <{constants.EXP_HAS_VALUE}> ?value;
+                <{constants.HAS_CALCULATION_METHOD}> <{calculation_iri}>.
+        }}
+        """
+        # remote store client gives a Java JSONArray
+        # send directly to ontop to speed up
+        query_result = json.loads(
+            kg_client.ontop_client.executeQuery(query).toString())
+
+        for item in query_result:
+            iri = item['subject']
+            subject_to_result_dict[iri] = item['value']
+
+    return subject_to_result_dict
+
+
 def _get_distance_to_result_dict(subject, exposure, calculation_type):
     from agent.utils.kg_client import kg_client
     distance_to_result_dict = {}
@@ -338,6 +450,78 @@ def _get_trip(point_iri: str):
         return query_results.getJSONObject(0).getString('trip')
 
 
+# header_keys correspond to the hierarchy of the dict in overall_result
+def _create_csv_result_keys(overall_result, header_keys: list[str], subject_to_label_dict, subject_to_point_dict):
+    # gives results in the form of ([key1, key2, ..., subject IRI], result)
+    path_to_result_tuple = collect_paths_in_result_dict(
+        overall_result, len(header_keys)+1)  # plus 1 for subject IRI
+
+    data = []
+    subject_to_result_dict_dict = {}
+    for path_to_result in path_to_result_tuple:
+        subject = path_to_result[0][-1]
+        result = path_to_result[1]
+        result_header_info = []
+        for i in range(len(header_keys)):
+            result_header_info.append(
+                header_keys[i] + str(path_to_result[0][i]))
+        result_header = "_".join(result_header_info)
+
+        if subject not in subject_to_result_dict_dict:
+            subject_to_result_dict_dict[subject] = {result_header: result}
+        else:
+            subject_to_result_dict_dict[subject][result_header] = result
+
+    for subject in subject_to_result_dict_dict:
+        postal_code = subject_to_label_dict[subject]
+        lat = subject_to_point_dict[subject].y
+        lng = subject_to_point_dict[subject].x
+
+        row = {'postal_code': postal_code, 'lat': lat,
+               'lng': lng, 'iri': subject} | subject_to_result_dict_dict[subject]
+
+        data.append(row)
+
+    output = io.StringIO()
+    if data:
+        writer = csv.DictWriter(output, fieldnames=data[0].keys())
+    else:
+        writer = csv.DictWriter(
+            output, fieldnames=['postal_code', 'lat', 'lng'])
+    writer.writeheader()
+    writer.writerows(data)
+
+    return output
+
+
+def collect_paths_in_result_dict(d, expected_depth):
+    results = []
+
+    def walk(obj, path):
+        depth = len(path)
+
+        # If we reached expected depth, this MUST be a leaf
+        if depth == expected_depth:
+            if isinstance(obj, dict) and obj:
+                raise ValueError(
+                    f"Expected leaf at depth {expected_depth}, found dict at {path}"
+                )
+            results.append((path, obj))
+            return
+
+        # If we haven't reached expected depth, this MUST be a dict
+        if not isinstance(obj, dict) or not obj:
+            raise ValueError(
+                f"Expected dict at depth {depth}, found leaf at {path}"
+            )
+
+        for k, v in obj.items():
+            walk(v, path + [k])
+
+    walk(d, [])
+    return results
+
+
 def _create_csv(overall_result, subject_to_label_dict, subject_to_point_dict):
 
     subject_to_header = defaultdict(lambda: defaultdict(dict))
@@ -397,6 +581,48 @@ def _get_dataset_year(dataset_iri):
     query_results = kg_client.remote_store_client.executeQuery(query)
 
     return query_results.getJSONObject(0).getString('year')
+
+
+def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[CalculationMetadata]:
+    from agent.utils.kg_client import kg_client
+
+    query_template = """
+    SELECT ?calculation ?distance
+    WHERE {{
+        ?calculation a <{rdf_type}>;
+            <{has_distance}> ?distance.
+        {dataset_filter_clauses}
+    }}
+    """
+    calculations = []
+    for dataset_filter in dataset_filters:
+        dataset_filter_where_clauses = get_dataset_filter_where_clauses(
+            calc_var='calculation', dataset_filter=dataset_filter)
+
+        query = query_template.format(rdf_type=rdf_type, has_distance=constants.HAS_DISTANCE,
+                                      dataset_filter_clauses="\n".join(dataset_filter_where_clauses))
+
+        query_results = json.loads(
+            kg_client.remote_store_client.executeQuery(query).toString())
+
+        calculation_iri = set()
+        distances = set()
+
+        if len(query_results) == 0:
+            raise Exception(f"No results for {dataset_filter}")
+
+        for row in query_results:
+            calculation_iri.add(row['calculation'])
+            distances.add(float(row['distance']))
+
+        if len(calculation_iri) != 1:
+            raise Exception('Number of calculation instances must be one')
+
+        for distance in distances:
+            calculations.append(CalculationMetadata(iri=next(
+                iter(calculation_iri)), rdf_type=rdf_type, dataset_filter=dataset_filter, distance=distance))
+
+    return calculations
 
 
 def _chunk_list(values, chunk_size=1000):
