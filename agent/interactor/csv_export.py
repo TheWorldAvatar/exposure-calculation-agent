@@ -80,6 +80,9 @@ def ndvi():
         subject_to_result_dict = _get_subject_to_result_dict_calc_iri(
             subject=subject, exposure=exposure_dataset_iri, calculation_iri=calculation.iri)
 
+        if not subject_to_result_dict:
+            continue
+
         # prepare keys for overall result dict
         result_keys = []
         result_keys.append(round(calculation.distance))
@@ -453,8 +456,11 @@ def _get_trip(point_iri: str):
 # header_keys correspond to the hierarchy of the dict in overall_result
 def _create_csv_result_keys(overall_result, header_keys: list[str], subject_to_label_dict, subject_to_point_dict):
     # gives results in the form of ([key1, key2, ..., subject IRI], result)
-    path_to_result_tuple = collect_paths_in_result_dict(
-        overall_result, len(header_keys)+1)  # plus 1 for subject IRI
+    if overall_result:
+        path_to_result_tuple = collect_paths_in_result_dict(
+            overall_result, len(header_keys)+1)  # plus 1 for subject IRI
+    else:
+        path_to_result_tuple = ()
 
     data = []
     subject_to_result_dict_dict = {}
@@ -605,22 +611,18 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
         query_results = json.loads(
             kg_client.remote_store_client.executeQuery(query).toString())
 
-        calculation_iri = set()
-        distances = set()
+        calc_to_distance = {}
 
         if len(query_results) == 0:
-            raise Exception(f"No results for {dataset_filter}")
+            logger.warning(f"No results for {dataset_filter}")
+            continue
 
         for row in query_results:
-            calculation_iri.add(row['calculation'])
-            distances.add(float(row['distance']))
+            calc_to_distance[row['calculation']] = float(row['distance'])
 
-        if len(calculation_iri) != 1:
-            raise Exception('Number of calculation instances must be one')
-
-        for distance in distances:
-            calculations.append(CalculationMetadata(iri=next(
-                iter(calculation_iri)), rdf_type=rdf_type, dataset_filter=dataset_filter, distance=distance))
+        for calculation_iri, distance in calc_to_distance.items():
+            calculations.append(CalculationMetadata(
+                iri=calculation_iri, rdf_type=rdf_type, dataset_filter=dataset_filter, distance=distance))
 
     return calculations
 

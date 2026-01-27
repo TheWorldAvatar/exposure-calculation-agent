@@ -1,6 +1,7 @@
 from flask import Blueprint, request
 from twa import agentlogging
 from agent.calculation.area_weighted_sum import area_weighted_sum
+from agent.calculation.raster_count import raster_count
 from agent.calculation.simple_area import simple_area
 from agent.calculation.trajectory import trajectory
 from agent.calculation.simple_count import simple_count
@@ -16,7 +17,8 @@ function_map = {
     **{t: trajectory for t in constants.TRAJECTORY_TYPES},
     constants.SIMPLE_COUNT: simple_count,
     constants.AREA_WEIGHTED_SUM: area_weighted_sum,
-    constants.SIMPLE_AREA: simple_area
+    constants.SIMPLE_AREA: simple_area,
+    constants.RASTER_COUNT: raster_count
 }
 
 CALCULATE_ROUTE = '/calculate_exposure'
