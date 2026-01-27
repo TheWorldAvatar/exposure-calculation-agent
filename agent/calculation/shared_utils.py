@@ -69,6 +69,7 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
             execute_values(cur, insert_query, data)
 
     # upload mapping only if it has not been uploaded
+    logger.info('Uploading ontop mapping if it does not exist')
     _upload_ontop_mapping()
 
 
@@ -78,9 +79,10 @@ def _upload_ontop_mapping():
     query = "SELECT * WHERE {?x ?y ?z} LIMIT 1"
 
     # currently fixed to the default ontop container
-    query_result = kg_client.ontop_client.executeQuery(query)
+    query_result = json.loads(
+        kg_client.ontop_client.executeQuery(query).toString())
 
-    if query_result.isEmpty():
+    if not query_result:
         ontop_mapping_path = Path('agent/calculation/resources/ontop.obda')
 
         path = stack_clients_view.java.nio.file.Paths.get(
@@ -180,8 +182,9 @@ def get_iri_to_buffer_dict(subject, distance: float):
                 geom = wkt.loads(wkt_literal)
 
             projected_geom = transform(transformer.transform, geom)
+            buffered_geom = projected_geom.buffer(distance)
             iri_to_buffer_dict[sub] = transform(
-                transformer_back.transform, projected_geom.buffer(distance))
+                transformer_back.transform, buffered_geom)
 
     return iri_to_buffer_dict
 
