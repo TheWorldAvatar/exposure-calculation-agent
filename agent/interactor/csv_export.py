@@ -14,8 +14,8 @@ from collections import defaultdict
 import json
 from tqdm import tqdm
 import sys
-
-from agent.utils.ts_client import TimeSeriesClient
+from agent.utils.postgis_client import postgis_client
+from psycopg2.extras import RealDictCursor
 
 logger = agentlogging.get_logger('dev')
 
@@ -25,6 +25,12 @@ csv_export_bp = Blueprint(
 
 @csv_export_bp.route('/ndvi', methods=['GET'])
 def ndvi():
+    multiplication_factor = request.args.get('multiplication_factor')
+    if multiplication_factor is None:
+        multiplication_factor = 1
+    else:
+        multiplication_factor = float(multiplication_factor)
+
     # IRI(s) of subject to calculate
     subject = request.args.get('subject')
 
@@ -77,8 +83,9 @@ def ndvi():
     overall_result = {}
     logger.info('Querying results')
     for calculation in calculation_metadata_list:
-        subject_to_result_dict = _get_subject_to_result_dict_calc_iri(
-            subject=subject, exposure=exposure_dataset_iri, calculation_iri=calculation.iri)
+        logger.info(f"Querying results for <{calculation.iri}>")
+        subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
+            exposure=exposure_dataset_iri, calculation_iri=calculation.iri, multiplication_factor=multiplication_factor)
 
         if not subject_to_result_dict:
             continue
@@ -296,6 +303,32 @@ def _get_subject_to_result_dict_calc_iri(subject, exposure, calculation_iri):
         for item in query_result:
             iri = item['subject']
             subject_to_result_dict[iri] = item['value']
+
+    return subject_to_result_dict
+
+
+def _get_subject_to_result_dict_calc_iri_sql(exposure, calculation_iri, multiplication_factor):
+    query = f"""
+    SELECT subject, value
+    FROM exposure_result e
+    WHERE exposure = %(EXPOSURE_PLACEHOLDER)s
+    AND calculation = %(CALCULATION_PLACEHOLDER)s
+    """
+    replacements = {
+        'EXPOSURE_PLACEHOLDER': exposure,
+        'CALCULATION_PLACEHOLDER': calculation_iri
+    }
+
+    subject_to_result_dict = {}
+    with postgis_client.connect() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, replacements)
+
+            if cur.description:
+                query_result = cur.fetchall()
+                for row in query_result:
+                    subject_to_result_dict[row['subject']
+                                           ] = row['value'] * multiplication_factor
 
     return subject_to_result_dict
 
