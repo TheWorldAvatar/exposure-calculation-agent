@@ -228,6 +228,7 @@ Distance is mandatory, whereas upper and lower bounds are optional.
 Overview: Counts features that are near each subject using ST_DWithin. [SQL query template here](./agent/calculation/resources/count.sql)
 
 Requirements:
+
 Subject: Any fixed vector with a WKT literal associated via geo:asWKT.
 Exposure: Any vector dataset uploaded via the stack data uploader.
 
@@ -249,6 +250,7 @@ Exposure dataset, optional to specify a custom geometry column name, if it is no
 Overview: Calculates intersected area between the buffered trajectory and specified dataset. [SQL query template here](./agent/calculation/resources/area_trajectory.sql)
 
 Requirements:
+
 Subject: Point time series
 Exposure: A polygon dataset
 
@@ -272,6 +274,7 @@ Exposure dataset, optional to specify a custom geometry column name, if it is no
 Overview: Calculates intersected area between a buffered point and polygons in a specified dataset. [SQL query template here](./agent/calculation/resources/area.sql)
 
 Requirements:
+
 Subject: Any fixed vector with a WKT literal associated via geo:asWKT, can be a list of IRI
 Exposure: A polygon dataset
 
@@ -288,19 +291,20 @@ Exposure dataset, optional to specify a custom geometry column name, if it is no
 
 #### Area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`)
 
-Overview: Applies a buffer around a subject and find the intersected elements in the exposure dataset. Then sums up the product of area and value of each intersected polygon. The exposure dataset is expected to be a vector dataset converted from a raster dataset via ST_PixelAsPolygons. For efficiency, the area of each polygon is precalculated, if a polygon is intersected partially, the whole area will be taken into account. If the polygons are small (converted from pixel), the error from this approximation should be small.
+Overview: Applies a buffer around a subject and find the intersected pixels in the exposure dataset. Sums up the product of area of the pixel and the value associated with the pixel.
 
-[SQL query template here](agent/calculation/resources/area_weighted_sum.sql).
+Requirements:
+
+Subject: Any vector with a WKT literal associated via geo:asWKT, can be a list of IRI
+Exposure: A raster dataset with an area attached to each tile
+
+[SQL query template here](agent/calculation/resources/area_weighted_sum_by_raster.sql).
 
 The following shows the equation:
 
 $\sum_{i=1}^N (A_i \times x_i)$
 
 where $i$ represents each cell enclosed by the buffer around the subject, $A_i=$ area of cell $i$, $N$ is the number of cells enclosed by the buffer and $x_i$ is the value associated with the cell.
-
-Requirements:
-Subject: Any vector with a WKT literal associated via geo:asWKT, can be a list of IRI
-Exposure: A vector dataset with a value attached to each polygon
 
 Calculation instance:
 
@@ -314,7 +318,6 @@ Exposure dataset, needs to have the area and value columns specified, if geometr
 ```ttl
 <http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
-    <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val";
     <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
 ```
 
