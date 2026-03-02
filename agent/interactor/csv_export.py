@@ -25,12 +25,6 @@ csv_export_bp = Blueprint(
 
 @csv_export_bp.route('/ndvi', methods=['GET'])
 def ndvi():
-    multiplication_factor = request.args.get('multiplication_factor')
-    if multiplication_factor is None:
-        multiplication_factor = 1
-    else:
-        multiplication_factor = float(multiplication_factor)
-
     # IRI(s) of subject to calculate
     subject = request.args.get('subject')
 
