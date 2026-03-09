@@ -82,6 +82,7 @@ def _upload_ontop_mapping():
     query_result = kg_client.ontop_client.executeQuery(query)
 
     if query_result.isEmpty():
+        logger.info("Updating Ontop mapping...")
         ontop_mapping_path = Path('agent/calculation/resources/ontop.obda')
 
         path = stack_clients_view.java.nio.file.Paths.get(
