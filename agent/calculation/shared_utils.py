@@ -13,6 +13,7 @@ from agent.utils.stack_gateway import stack_clients_view
 from pathlib import Path
 from agent.utils.constants import METRE_SQUARED
 import json
+import time
 
 logger = agentlogging.get_logger('dev')
 
@@ -84,6 +85,9 @@ def _upload_ontop_mapping():
         path = stack_clients_view.java.nio.file.Paths.get(
             stack_clients_view.java.net.URI(ontop_mapping_path.resolve().as_uri()))
         ONTOP_CLIENT.updateOBDA(path)
+        # Give Ontop some time to sort itself out.
+        # It will not be ready immediately to take queries!
+        time.sleep(3)
 
 
 def get_iri_to_point_dict(subject):
