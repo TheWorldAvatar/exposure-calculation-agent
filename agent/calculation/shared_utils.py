@@ -11,7 +11,7 @@ from agent.utils.postgis_client import postgis_client
 from psycopg2.extras import execute_values
 from agent.utils.stack_gateway import stack_clients_view
 from pathlib import Path
-from agent.utils.constants import METRE_SQUARED
+from agent.utils.constants import METRE_SQUARED, EXPOSURE_RESULT
 import json
 import time
 
@@ -76,7 +76,7 @@ def _upload_ontop_mapping():
 
     # Don't make too general a query here. Look for a statement
     # that can be there only if the mapping has been uploaded.
-    query = "SELECT * WHERE {?r a <https://www.theworldavatar.com/kg/ontoexposure/ExposureResult>} LIMIT 1"
+    query = f"SELECT * WHERE {{?r a <{EXPOSURE_RESULT}>}} LIMIT 1"
 
     # currently fixed to the default ontop container
     query_result = kg_client.ontop_client.executeQuery(query)
