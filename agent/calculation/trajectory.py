@@ -119,8 +119,11 @@ def trajectory(calculation_input: CalculationInput):
 
     # create a new column sharing the same time series with trajectory if it does not exist
     if result_iri is None:
+        logger.info("No existing result IRI found. Creating one...")
         instantiate_result_ontop(calculation_input=calculation_input)
         result_iri = _get_exposure_result(calculation_input)
+        if result_iri is None:
+            raise Exception("Failed to obtain new result IRI!")
 
     if kg_client.get_time_series(result_iri) is None:
         # add a column that shares the same time series with trajectory
@@ -211,7 +214,7 @@ def _get_exposure_result(calculation_input: CalculationInput):
     elif query_result.length() == 1:
         return query_result.getJSONObject(0).getString('result')
     else:
-        raise Exception('Unexpected query result size ' +
+        raise Exception('Found more than one exposure result: ' +
                         query_result.toString())
 
 
