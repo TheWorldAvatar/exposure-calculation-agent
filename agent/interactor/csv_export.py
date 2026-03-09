@@ -79,7 +79,7 @@ def ndvi():
     for calculation in calculation_metadata_list:
         logger.info(f"Querying results for <{calculation.iri}>")
         subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
-            exposure=exposure_dataset_iri, calculation_iri=calculation.iri, multiplication_factor=multiplication_factor)
+            exposure=exposure_dataset_iri, calculation_iri=calculation.iri)
 
         if not subject_to_result_dict:
             continue
@@ -301,7 +301,7 @@ def _get_subject_to_result_dict_calc_iri(subject, exposure, calculation_iri):
     return subject_to_result_dict
 
 
-def _get_subject_to_result_dict_calc_iri_sql(exposure, calculation_iri, multiplication_factor):
+def _get_subject_to_result_dict_calc_iri_sql(exposure, calculation_iri):
     query = f"""
     SELECT subject, value
     FROM exposure_result e
@@ -321,8 +321,7 @@ def _get_subject_to_result_dict_calc_iri_sql(exposure, calculation_iri, multipli
             if cur.description:
                 query_result = cur.fetchall()
                 for row in query_result:
-                    subject_to_result_dict[row['subject']
-                                           ] = row['value'] * multiplication_factor
+                    subject_to_result_dict[row['subject']] = row['value']
 
     return subject_to_result_dict
 
