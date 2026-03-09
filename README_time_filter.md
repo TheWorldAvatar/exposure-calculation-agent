@@ -41,11 +41,12 @@ exposure:timezone/1 a exposure:TimeZone;
 ## Workflow
 
 1) Geospatial filtering
-   1) Construct a line for each trip
-   2) Collect IRIs of intersected features for each trip
+   1) Query trajectory via federated SPARQL
+   2) Construct a line for each trip
+   3) Collect IRIs of intersected features for each trip (via SQL)
 2) Time filtering
-   1) Query business start/end and opening hours of each intersected feature
-   2) Do time filtering, refer to [time filtering hierarcy](#time-filtering-hierarchy) section for more details
+   1) Query business start/end and opening hours of each intersected feature (via SPARQL)
+   2) Do time filtering in memory (python), refer to [time filtering hierarcy](#time-filtering-hierarchy) section for more details
 
 ## Time filtering hierarchy
 
