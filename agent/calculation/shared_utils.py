@@ -74,7 +74,9 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
 def _upload_ontop_mapping():
     from agent.utils.kg_client import kg_client
 
-    query = "SELECT * WHERE {?x ?y ?z} LIMIT 1"
+    # Don't make too general a query here. Look for a statement
+    # that can be there only if the mapping has been uploaded.
+    query = "SELECT * WHERE {?r a <https://www.theworldavatar.com/kg/ontoexposure/ExposureResult>} LIMIT 1"
 
     # currently fixed to the default ontop container
     query_result = kg_client.ontop_client.executeQuery(query)
