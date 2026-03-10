@@ -210,10 +210,12 @@ def _get_exposure_result(calculation_input: CalculationInput):
     query_result = kg_client.remote_store_client.executeQuery(query)
 
     if query_result.isEmpty():
+        logger.info(query)
         return None
     elif query_result.length() == 1:
         return query_result.getJSONObject(0).getString('result')
     else:
+        logger.info(query)
         raise Exception('Found more than one exposure result: ' +
                         query_result.toString())
 
