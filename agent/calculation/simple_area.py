@@ -51,5 +51,7 @@ def simple_area(calculation_input: CalculationInput):
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)
 
-    logger.info('Completed instantiation')
-    return 'Completed calculation for simple area'
+    complete_message = 'Completed calculation for simple area'
+    logger.info(complete_message)
+
+    return complete_message

@@ -47,5 +47,6 @@ def simple_count(calculation_input: CalculationInput):
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)
 
-    logger.info('Completed instantiation')
-    return 'Calculation complete', 200
+    complete_message = 'Completed calculation for count'
+    logger.info(complete_message)
+    return complete_message, 200

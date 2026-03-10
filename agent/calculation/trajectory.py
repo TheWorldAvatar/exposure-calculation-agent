@@ -96,7 +96,6 @@ def trajectory(calculation_input: CalculationInput):
     # time filter needs the iri of the feature for time filtering later, where data are stored as triples
     if calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_AREA_WEIGHTED_SUM:
         columns.append(exposure_dataset.area_column + ' AS area')
-        columns.append(exposure_dataset.value_columhn + ' AS val')
     elif calculation_input.calculation_metadata.rdf_type in [constants.TRAJECTORY_TIME_FILTER_COUNT, constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED]:
         columns.append(exposure_dataset.iri_column + ' AS iri')
 
@@ -161,7 +160,10 @@ def trajectory(calculation_input: CalculationInput):
     # uploads data to database
     ts_client.add_time_series(result_time_series)
 
-    return 'Trajectory count complete', 200
+    complete_message = 'Trajectory calculation complete'
+    logger.info(complete_message)
+
+    return complete_message, 200
 
 
 def _process_trip(trip_index_array, points: list[Point], timestamp_list):

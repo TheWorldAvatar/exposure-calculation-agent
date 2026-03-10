@@ -49,4 +49,7 @@ def raster_area(calculation_input: CalculationInput):
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)
 
-    return 'Completed calculation for raster area'
+    complete_message = 'Completed calculation for raster area'
+    logger.info(complete_message)
+
+    return complete_message
