@@ -91,6 +91,11 @@ def _upload_ontop_mapping():
         # Give Ontop some time to sort itself out.
         # It will not be ready immediately to take queries!
         time.sleep(3)
+        # The following is essential. Otherwise the outgoing federation
+        # will return nothing, or random garbage...
+        of_rep_id = stack_clients_view.Rdf4jService.OUT_STACK_REPO_ID
+        logger.info(f"Refreshing outgoing federation ('{of_rep_id}') cache...")
+        stack_clients_view.Rdf4jClient.getInstance().refreshRepositoryCache(of_rep_id)
 
 
 def get_iri_to_point_dict(subject):
