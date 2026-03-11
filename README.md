@@ -400,3 +400,37 @@ The following APIs are used to initialise the necessary instances and trigger th
     ```bash
     curl -o trajectory_result.csv 'http://localhost:3838/exposure-calculation-agent/csv_export/trajectory?rdf_type=https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea&subject=http://trip_trajectory&exposure_table=parks_2016&lowerbound=1715759710072&upperbound=1715759730231'
     ```
+
+4) /trigger_calculation/bulk (POST)
+
+   No parameters, instead inputs to be provided in the request body as JSON, e.g.
+
+   ```bash
+    curl -X POST "http://localhost:3838/exposure-calculation-agent/trigger_calculation/bulk" -H "Content-Type: application/json" -d @body.json
+    ```
+
+    where the content of **body.json** is something like
+
+    ```json
+    {
+        "exposure_table": "ndvi_raster",
+        "rdf_types": [
+            "https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum"
+        ],
+        "distances": [
+            400,
+            800,
+            1000
+        ],
+        "dataset_filter_values": {
+            "year": [
+            2016
+            ]
+        },
+        // provide either subject_query_file or subject, not both
+        "subject_query_file": "subject_query.sparql",
+        "subject": "http://subject"
+    }
+    ```
+
+    dataset_filter_values is optional.
