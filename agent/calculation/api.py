@@ -26,6 +26,16 @@ function_map = {
 CALCULATE_ROUTE = '/calculate_exposure'
 
 
+def do_calculation(subject, calculation, exposure):
+    calculation_metadata = get_calculation_metadata(calculation)
+
+    calculation_input = CalculationInput(
+        subject=subject, exposure=exposure, calculation_metadata=calculation_metadata)
+
+    # calls the appropriate function according to calculation rdf_type
+    return function_map[calculation_metadata.rdf_type](calculation_input)
+
+
 @calculation_blueprint.route(CALCULATE_ROUTE, methods=['POST'])
 # core agent, takes IRIs of calculation, subject, and exposure as inputs
 def api():
@@ -39,15 +49,8 @@ def api():
     """
     logger.info('Core calculation agent request received')
     request_json = request.get_json()
-    calculation_iri = request_json['calculation']
+    calculation = request_json['calculation']
     subject = request_json['subject']
     exposure = request_json['exposure']
 
-    # gives a CalculationMetadata object
-    calculation_metadata = get_calculation_metadata(calculation_iri)
-
-    calculation_input = CalculationInput(
-        subject=subject, exposure=exposure, calculation_metadata=calculation_metadata)
-
-    # calls the appropriate function according to calculation rdf_type
-    return function_map[calculation_metadata.rdf_type](calculation_input)
+    return do_calculation(subject=subject, calculation=calculation, exposure=exposure)
