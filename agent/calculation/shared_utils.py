@@ -11,8 +11,9 @@ from agent.utils.postgis_client import postgis_client
 from psycopg2.extras import execute_values
 from agent.utils.stack_gateway import stack_clients_view
 from pathlib import Path
-from agent.utils.constants import METRE_SQUARED
+from agent.utils.constants import METRE_SQUARED, EXPOSURE_RESULT
 import json
+import time
 
 logger = agentlogging.get_logger('dev')
 
@@ -76,18 +77,29 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
 def _upload_ontop_mapping():
     from agent.utils.kg_client import kg_client
 
-    query = "SELECT * WHERE {?x ?y ?z} LIMIT 1"
+    # Don't make too general a query here. Look for a statement
+    # that can be there only if the mapping has been uploaded.
+    query = f"SELECT * WHERE {{?r a <{EXPOSURE_RESULT}>}} LIMIT 1"
 
     # currently fixed to the default ontop container
     query_result = json.loads(
         kg_client.ontop_client.executeQuery(query).toString())
 
     if not query_result:
+        logger.info("Updating Ontop mapping...")
         ontop_mapping_path = Path('agent/calculation/resources/ontop.obda')
 
         path = stack_clients_view.java.nio.file.Paths.get(
             stack_clients_view.java.net.URI(ontop_mapping_path.resolve().as_uri()))
         ONTOP_CLIENT.updateOBDA(path)
+        # Give Ontop some time to sort itself out.
+        # It will not be ready immediately to take queries!
+        time.sleep(3)
+        # The following is essential. Otherwise the outgoing federation
+        # will return nothing, or random garbage...
+        of_rep_id = stack_clients_view.Rdf4jService.OUT_STACK_REPO_ID
+        logger.info(f"Refreshing outgoing federation ('{of_rep_id}') cache...")
+        stack_clients_view.Rdf4jClient.getInstance().refreshRepositoryCache(of_rep_id)
 
 
 def get_iri_to_point_dict(subject):

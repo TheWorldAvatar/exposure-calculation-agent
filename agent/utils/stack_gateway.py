@@ -22,3 +22,5 @@ stackClientsGw.importPackages(
     stack_clients_view, "uk.ac.cam.cares.jps.base.query.*")
 stackClientsGw.importPackages(
     stack_clients_view, "uk.ac.cam.cares.jps.base.timeseries.*")
+stackClientsGw.importPackages(
+    stack_clients_view, "com.cmclinnovations.stack.services.Rdf4jService")
