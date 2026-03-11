@@ -13,7 +13,6 @@ from agent.utils.stack_gateway import stack_clients_view
 from pathlib import Path
 from agent.utils.constants import METRE_SQUARED
 import json
-import time
 
 logger = agentlogging.get_logger('dev')
 
@@ -72,9 +71,6 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
     # upload mapping only if it has not been uploaded
     logger.info('Uploading ontop mapping if it does not exist')
     _upload_ontop_mapping()
-
-    logger.info('Waiting 30 seconds for Ontop to initialise')
-    time.sleep(30)
 
 
 def _upload_ontop_mapping():
