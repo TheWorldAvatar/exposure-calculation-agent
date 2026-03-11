@@ -105,6 +105,8 @@ def _upload_ontop_mapping():
 def get_iri_to_point_dict(subject):
     # returns points in EPSG:3857, to be used for ST_DWithin in queries
     from agent.utils.kg_client import kg_client
+    if not isinstance(subject, list):
+        subject = [subject]
 
     iri_to_point_dict = {}
     transformer = Transformer.from_crs(
