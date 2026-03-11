@@ -10,7 +10,7 @@ from datetime import date
 class ExposureDataset:
     table_name: str
     url: str
-    geometry_column: str = constants.VECTOR_GEOMETRY_COLUMN
+    geometry_column: str = None
     # used for area weighted calculation, pre-calculated area of a polygon (converted from pixel)
     area_column: Optional[str] = None
     # used for time filtering
@@ -64,9 +64,6 @@ def get_exposure_dataset(dataset_iri):
 
     if 'geometry_column' in query_result[0]:
         exposure_dataset.geometry_column = query_result[0]['geometry_column']
-    else:
-        # default name provided by gdal
-        exposure_dataset.geometry_column = 'wkb_geometry'
 
     if 'area_column' in query_result[0]:
         exposure_dataset.area_column = query_result[0]['area_column']

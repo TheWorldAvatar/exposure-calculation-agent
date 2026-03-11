@@ -1,6 +1,7 @@
 from agent.calculation.calculation_input import CalculationInput
 from agent.calculation.shared_utils import get_iri_to_buffer_dict, instantiate_result_ontop
 from agent.objects.exposure_dataset import get_exposure_dataset
+from agent.utils import constants
 from agent.utils.postgis_client import postgis_client
 from twa import agentlogging
 from tqdm import tqdm
@@ -26,9 +27,13 @@ def raster_count(calculation_input: CalculationInput):
         where_clauses.append(f"AND r.{key} = %({key})s")
         params[key] = value
 
+    if exposure_dataset.geometry_column is not None:
+        geometry_column = exposure_dataset.geometry_column
+    else:
+        geometry_column = constants.RASTER_GEOMETRY_COLUMN
+
     raster_count_sql = raster_count_sql.format(
-        EXPOSURE_DATASET=exposure_dataset.table_name, GEOMETRY_COLUMN=exposure_dataset.geometry_column,
-        DATASET_FILTERS="\n".join(where_clauses))
+        EXPOSURE_DATASET=exposure_dataset.table_name, GEOMETRY_COLUMN=geometry_column, DATASET_FILTERS="\n".join(where_clauses))
 
     logger.info('Submitting SQL queries for calculations')
     subject_to_result_dict = {}

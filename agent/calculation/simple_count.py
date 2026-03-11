@@ -1,6 +1,7 @@
 from agent.calculation.calculation_input import CalculationInput
 from agent.calculation.shared_utils import get_iri_to_point_dict, instantiate_result_ontop
 from agent.objects.exposure_dataset import get_exposure_dataset
+from agent.utils import constants
 from agent.utils.postgis_client import postgis_client
 from twa import agentlogging
 from tqdm import tqdm
@@ -27,8 +28,14 @@ def simple_count(calculation_input: CalculationInput):
         with conn.cursor() as cur:
             # create temp table for efficiency
             temp_table = 'temp_table'
+
+            if exposure_dataset.geometry_column is not None:
+                geometry_column = exposure_dataset.geometry_column
+            else:
+                geometry_column = constants.VECTOR_GEOMETRY_COLUMN
+
             temp_table_sql = temp_table_sql.format(
-                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, GEOMETRY_COLUMN=exposure_dataset.geometry_column)
+                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, GEOMETRY_COLUMN=geometry_column)
             cur.execute(temp_table_sql)
 
             count_sql = count_sql.format(TEMP_TABLE=temp_table)
