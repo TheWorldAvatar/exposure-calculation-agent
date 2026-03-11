@@ -21,6 +21,7 @@ def retrieve_stack_settings():
         # Retrieve endpoint configurations from Stack clients
         ONTOP_URL = stack_clients_view.OntopClient.getInstance(
             "ontop").readEndpointConfig().getUrl()
+        logger.info(f"Ontop URL: {ONTOP_URL}")
         RDB_URL = stack_clients_view.PostGISClient.getInstance(
         ).readEndpointConfig().getJdbcURL(DATABASE)
         RDB_USER = stack_clients_view.PostGISClient.getInstance(
@@ -30,11 +31,13 @@ def retrieve_stack_settings():
 
         BLAZEGRAPH_URL = stack_clients_view.BlazegraphClient.getInstance(
         ).readEndpointConfig().getUrl(NAMESPACE)
+        logger.info(f"Blazegraph URL: {BLAZEGRAPH_URL}")
 
         ONTOP_CLIENT = stack_clients_view.OntopClient.getInstance("ontop")
 
         STACK_OUTGOING = stack_clients_view.Rdf4jClient.getInstance(
         ).readEndpointConfig().getOutgoingRepositoryUrl()
+        logger.info(f"Outgoing URL: {STACK_OUTGOING}")
 
     except Exception as e:
         err_msg = "General Stack client parameter extraction error: {}".format(

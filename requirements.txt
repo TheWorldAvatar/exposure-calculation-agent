@@ -1,3 +1,4 @@
+setuptools<81
 flask
 requests
 twa==0.0.8
