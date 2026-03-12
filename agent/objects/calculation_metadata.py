@@ -18,8 +18,6 @@ class CalculationMetadata():
         self.dataset_filter = dataset_filter
 
     def get_query(self, var: str) -> str:
-        # for some weird reason, sending this query via RDF4J federation will yield many rows,
-        # but sending this to blazegraph will only yield one row of results
         query = f"""
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
         SELECT DISTINCT ?{var}
