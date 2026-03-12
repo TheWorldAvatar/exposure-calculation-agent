@@ -18,9 +18,11 @@ class CalculationMetadata():
         self.dataset_filter = dataset_filter
 
     def get_query(self, var: str) -> str:
+        # for some weird reason, sending this query via RDF4J federation will yield many rows,
+        # but sending this to blazegraph will only yield one row of results
         query = f"""
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-        SELECT ?{var}
+        SELECT DISTINCT ?{var}
         WHERE {{
             ?{var} a <{self.rdf_type}>.
             {self.__get_where_clauses(var)}
@@ -135,7 +137,7 @@ def get_dataset_filter_where_clauses(calc_var: str, dataset_filter: dict):
 def get_calculation_metadata(iri: str) -> CalculationMetadata:
     from agent.utils.kg_client import kg_client
     query = f"""
-    SELECT ?rdf_type ?distance ?upperbound ?lowerbound ?filter_column ?filter_value
+    SELECT DISTINCT ?rdf_type ?distance ?upperbound ?lowerbound ?filter_column ?filter_value
     WHERE
     {{
         <{iri}> a ?rdf_type.
@@ -178,7 +180,8 @@ def get_calculation_metadata(iri: str) -> CalculationMetadata:
                 lowerbound = row['lowerbound']
 
         if 'filter_column' in row:
-            dataset_filter[row['filter_column']] = row['filter_value']
+            dataset_filter[row['filter_column']
+                           ] = parse_value(row['filter_value'])
 
     return CalculationMetadata(rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, iri=iri, dataset_filter=dataset_filter)
 
@@ -199,8 +202,42 @@ def is_datetime(s: str) -> bool:
         return False
 
 
+def parse_value(s: str):
+    # parse result from sparql query into native python type
+    s_clean = s.strip()
+    s_lower = s_clean.lower()
+
+    # 1. Boolean first
+    if s_lower == 'true':
+        return True
+    if s_lower == 'false':
+        return False
+
+    # 2. Integer check
+    try:
+        # Only allow pure integers
+        if '.' not in s_clean:
+            return int(s_clean)
+    except ValueError:
+        pass
+
+    # 3. Float check
+    try:
+        return float(s_clean)
+    except ValueError:
+        pass
+
+    # 4. Fallback: string
+    return s_clean
+
+
 def format_rdf_literal(value):
     if isinstance(value, str):
         return f"'{value}'"
+    elif isinstance(value, bool):
+        if value:
+            return "true"
+        else:
+            return "false"
     else:
         return value

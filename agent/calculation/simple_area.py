@@ -24,6 +24,16 @@ def simple_area(calculation_input: CalculationInput):
     with open("agent/calculation/resources/area.sql", "r") as f:
         area_sql = f.read()
 
+    # handle dataset filters
+    where_clause = " AND ".join(
+        f"{k} = %({k})s" for k in calculation_input.calculation_metadata.dataset_filter)
+    if where_clause:
+        where_clause = f"WHERE {where_clause}"
+
+    params = {}
+    for key, value in calculation_input.calculation_metadata.dataset_filter.items():
+        params[key] = value
+
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
         with conn.cursor() as cur:
@@ -36,8 +46,8 @@ def simple_area(calculation_input: CalculationInput):
                 geometry_column = constants.VECTOR_GEOMETRY_COLUMN
 
             temp_table_sql = temp_table_sql.format(
-                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, GEOMETRY_COLUMN=geometry_column)
-            cur.execute(temp_table_sql)
+                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, GEOMETRY_COLUMN=geometry_column, DATASET_FILTERS=where_clause)
+            cur.execute(temp_table_sql, params)
 
             area_sql = area_sql.format(TEMP_TABLE=temp_table)
             for iri, point in tqdm(iri_to_point_dict.items(), mininterval=60, ncols=80, file=sys.stdout):
