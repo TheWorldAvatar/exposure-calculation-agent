@@ -1,8 +1,9 @@
+from itertools import product
 import re
 from flask import Blueprint, Response, request
 from twa import agentlogging
 from agent.interactor.trigger_calculation import get_dataset_iri
-from agent.objects.calculation_metadata import CalculationMetadata, format_rdf_literal, get_dataset_filter_where_clauses
+from agent.objects.calculation_metadata import CalculationMetadata, get_dataset_filter_where_clauses
 import agent.utils.constants as constants
 from pathlib import Path
 from rdflib.plugins.sparql.parser import parseQuery
@@ -23,36 +24,44 @@ csv_export_bp = Blueprint(
     'csv_export', __name__, url_prefix='/csv_export')
 
 
-@csv_export_bp.route('/ndvi', methods=['GET'])
-def ndvi():
+@csv_export_bp.route('/non_trajectory', methods=['POST'])
+def non_trajectory():
+    inputs = request.json
     # IRI(s) of subject to calculate
-    subject = request.args.get('subject')
+    subject = None
+    if 'subject' in inputs:
+        subject = [inputs['subject']]
 
-    if subject is not None:
-        subject = [subject]
-
-    exposure_table = request.args.get('exposure_table')
+    exposure_table = inputs['exposure_table']
     exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
-    rdf_type = request.args.get('rdf_type')
+    rdf_type = inputs['rdf_type']
 
     # query to obtain subject IRIs
-    subject_query_file = request.args.get('subject_query_file')
+    subject_query_file = None
+    if 'subject_query_file' in inputs:
+        subject_query_file = inputs['subject_query_file']
 
     # query for user facing label of subject IRI, e.g. postcode value
-    subject_label_query_file = request.args.get('subject_label_query_file')
+    subject_label_query_file = inputs['subject_label_query_file']
 
     if subject is not None and subject_query_file is not None:
         raise Exception('Provide subject or subject_query_file, but not both')
 
-    dataset_filter = request.args.getlist('dataset_filter')
     dataset_filters = []
-    for d in dataset_filter:
-        dataset_filters.append(json.loads(d))
+    filter_columns = []
+    if 'dataset_filter_values' in inputs:
+        dataset_filter_values = inputs['dataset_filter_values']
+        dataset_filters = [
+            dict(zip(dataset_filter_values.keys(), combo))
+            for combo in product(*dataset_filter_values.values())
+        ]
+        first_keys = set(dataset_filters[0].keys())
+        if not all(set(d.keys()) == first_keys for d in dataset_filters):
+            raise Exception(
+                'Provided dataset filters should have the same keys')
 
-    first_keys = set(dataset_filters[0].keys())
-    if not all(set(d.keys()) == first_keys for d in dataset_filters):
-        raise Exception(
-            'Provided dataset filters should have the same keys')
+        # keys for the result dictionary
+        filter_columns.extend(sorted(list(dataset_filters[0].keys())))
 
     calculation_metadata_list = _get_calculations(
         rdf_type=rdf_type, dataset_filters=dataset_filters)
@@ -69,33 +78,45 @@ def ndvi():
     logger.info('Getting subject coordinates')
     subject_to_point_dict = _get_subject_to_point_dict(subject=subject)
 
-    # keys for the result dictionary
-    filter_columns = sorted(list(dataset_filters[0].keys()))
-
     # dict with multiple levels, e.g. overall_result[distance][key1][key2]
     # where key1, key2 are generated dynamically
     overall_result = {}
     logger.info('Querying results')
-    for calculation in calculation_metadata_list:
-        logger.info(f"Querying results for <{calculation.iri}>")
-        subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
-            exposure=exposure_dataset_iri, calculation_iri=calculation.iri)
+    with postgis_client.connect() as conn:
+        for calculation in calculation_metadata_list:
+            logger.info(f"Querying results for <{calculation.iri}>")
 
-        if not subject_to_result_dict:
-            continue
+            if len(subject) == 1:
+                # restrict result to a specified subject if it is provided
+                subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
+                    exposure=exposure_dataset_iri, calculation_iri=calculation.iri, subject=subject[0], conn=conn)
+            else:
+                # this queries everything for this exposure + calculation combo
+                subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
+                    exposure=exposure_dataset_iri, calculation_iri=calculation.iri, conn=conn)
 
-        # prepare keys for overall result dict
-        result_keys = []
-        result_keys.append(round(calculation.distance))
+            if not subject_to_result_dict:
+                continue
 
-        for filter_column in filter_columns:
-            result_keys.append(calculation.dataset_filter[filter_column])
+            # prepare keys for overall result dict
+            result_keys = []
+            result_keys.append(round(calculation.distance))
 
-        current = overall_result
-        for k in result_keys[:-1]:
-            current = current.setdefault(k, {})
+            for filter_column in filter_columns:
+                if isinstance(calculation.dataset_filter[filter_column], bool):
+                    if calculation.dataset_filter[filter_column]:
+                        result_keys.append(1)
+                    else:
+                        result_keys.append(0)
+                else:
+                    result_keys.append(
+                        calculation.dataset_filter[filter_column])
 
-        current[result_keys[-1]] = subject_to_result_dict
+            current = overall_result
+            for k in result_keys[:-1]:
+                current = current.setdefault(k, {})
+
+            current[result_keys[-1]] = subject_to_result_dict
 
     logger.info('Producing csv file')
     header_keys = filter_columns
@@ -103,59 +124,6 @@ def ndvi():
     header_keys = [s[0] for s in header_keys]  # take first letter only
     csv = _create_csv_result_keys(overall_result=overall_result, header_keys=header_keys,
                                   subject_to_label_dict=subject_to_label_dict, subject_to_point_dict=subject_to_point_dict)
-
-    response = Response(csv.getvalue(), mimetype='text/csv')
-    response.headers["Content-Disposition"] = "attachment; filename=data.csv"
-    return response
-
-
-@csv_export_bp.route('/greenspace', methods=['GET'])
-def greenspace():
-    # IRI(s) of subject to calculate
-    subject = request.args.get('subject')
-
-    if subject is not None:
-        subject = [subject]
-
-    exposure_table_list = request.args.getlist('exposure_table')
-    rdf_type_list = request.args.getlist('rdf_type')
-
-    # query to obtain subject IRIs
-    subject_query_file = request.args.get('subject_query_file')
-
-    # query for user facing label of subject IRI, e.g. postcode value
-    subject_label_query_file = request.args.get('subject_label_query_file')
-
-    if subject is not None and subject_query_file is not None:
-        raise Exception('Provide subject or subject_query_file, but not both')
-
-    # do SPARQL query to obtain a list of subject IRIs
-    if subject_query_file is not None:
-        subject = _get_subjects(subject_query_file=subject_query_file)
-
-    # returns IRI to label
-    logger.info('Querying label')
-    subject_to_label_dict = _get_subject_to_label_dict(
-        subject_label_query_file=subject_label_query_file, subjects=subject)
-
-    logger.info('Getting subject coordinates')
-    subject_to_point_dict = _get_subject_to_point_dict(subject=subject)
-
-    # dictionary hierarchy [dataset_year][calculation][subject][distance]
-    overall_result = defaultdict(lambda: defaultdict(dict))
-    for exposure_table in exposure_table_list:
-        exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
-        dataset_year = _get_dataset_year(exposure_dataset_iri)
-        for calculation in rdf_type_list:
-            logger.info(
-                f"""Querying results for calculation: <{calculation}>, dataset: {exposure_table}""")
-            subject_to_result_dict = _get_subject_to_result_dict(
-                subject=subject, exposure=exposure_dataset_iri, calculation_type=calculation)
-            overall_result[dataset_year][calculation] = subject_to_result_dict
-
-    logger.info('Generating CSV file')
-    csv = _create_csv(overall_result=overall_result, subject_to_label_dict=subject_to_label_dict,
-                      subject_to_point_dict=subject_to_point_dict)
 
     response = Response(csv.getvalue(), mimetype='text/csv')
     response.headers["Content-Disposition"] = "attachment; filename=data.csv"
@@ -273,6 +241,7 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
 
 
 def _get_subject_to_result_dict_calc_iri(subject, exposure, calculation_iri):
+    # this is replaced by the SQL version because it is ontop is running out of memory
     from agent.utils.kg_client import kg_client
     subject_to_result_dict = defaultdict(lambda: defaultdict(dict))
 
@@ -301,27 +270,32 @@ def _get_subject_to_result_dict_calc_iri(subject, exposure, calculation_iri):
     return subject_to_result_dict
 
 
-def _get_subject_to_result_dict_calc_iri_sql(exposure, calculation_iri):
+def _get_subject_to_result_dict_calc_iri_sql(exposure=None, calculation_iri=None, subject=None, conn=None):
     query = f"""
     SELECT subject, value
     FROM exposure_result e
     WHERE exposure = %(EXPOSURE_PLACEHOLDER)s
     AND calculation = %(CALCULATION_PLACEHOLDER)s
     """
+
     replacements = {
         'EXPOSURE_PLACEHOLDER': exposure,
         'CALCULATION_PLACEHOLDER': calculation_iri
     }
 
-    subject_to_result_dict = {}
-    with postgis_client.connect() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, replacements)
+    if subject is not None:
+        query += " AND subject = %(SUBJECT_PLACEHOLDER)s"
 
-            if cur.description:
-                query_result = cur.fetchall()
-                for row in query_result:
-                    subject_to_result_dict[row['subject']] = row['value']
+        replacements['SUBJECT_PLACEHOLDER'] = subject
+
+    subject_to_result_dict = {}
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(query, replacements)
+
+        if cur.description:
+            query_result = cur.fetchall()
+            for row in query_result:
+                subject_to_result_dict[row['subject']] = row['value']
 
     return subject_to_result_dict
 
@@ -621,9 +595,11 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
     query_template = """
     SELECT ?calculation ?distance
     WHERE {{
-        ?calculation a <{rdf_type}>;
-            <{has_distance}> ?distance.
-        {dataset_filter_clauses}
+        SERVICE<{blazegraph_url}> {{
+            ?calculation a <{rdf_type}>;
+                <{has_distance}> ?distance.
+            {dataset_filter_clauses}
+        }}
     }}
     """
     calculations = []
@@ -632,7 +608,8 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
             calc_var='calculation', dataset_filter=dataset_filter)
 
         query = query_template.format(rdf_type=rdf_type, has_distance=constants.HAS_DISTANCE,
-                                      dataset_filter_clauses="\n".join(dataset_filter_where_clauses))
+                                      dataset_filter_clauses="\n".join(
+                                          dataset_filter_where_clauses), blazegraph_url=BLAZEGRAPH_URL)
 
         query_results = json.loads(
             kg_client.remote_store_client.executeQuery(query).toString())
@@ -650,9 +627,83 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
             calculations.append(CalculationMetadata(
                 iri=calculation_iri, rdf_type=rdf_type, dataset_filter=dataset_filter, distance=distance))
 
+    if len(dataset_filters) == 0:
+        query = query_template.format(rdf_type=rdf_type, has_distance=constants.HAS_DISTANCE,
+                                      dataset_filter_clauses='', blazegraph_url=BLAZEGRAPH_URL)
+
+        query_results = json.loads(
+            kg_client.remote_store_client.executeQuery(query).toString())
+
+        calc_to_distance = {}
+
+        if len(query_results) == 0:
+            logger.warning(
+                f"No results for calculation query without dataset filters")
+            return
+
+        for row in query_results:
+            calc_to_distance[row['calculation']] = float(row['distance'])
+
+        for calculation_iri, distance in calc_to_distance.items():
+            calculations.append(CalculationMetadata(
+                iri=calculation_iri, rdf_type=rdf_type, distance=distance))
+
     return calculations
 
 
 def _chunk_list(values, chunk_size=1000):
     for i in range(0, len(values), chunk_size):
         yield values[i:i + chunk_size]
+
+
+@csv_export_bp.route('/greenspace_deprecated', methods=['GET'])
+def greenspace():
+    # IRI(s) of subject to calculate
+    subject = request.args.get('subject')
+
+    if subject is not None:
+        subject = [subject]
+
+    exposure_table_list = request.args.getlist('exposure_table')
+    rdf_type_list = request.args.getlist('rdf_type')
+
+    # query to obtain subject IRIs
+    subject_query_file = request.args.get('subject_query_file')
+
+    # query for user facing label of subject IRI, e.g. postcode value
+    subject_label_query_file = request.args.get('subject_label_query_file')
+
+    if subject is not None and subject_query_file is not None:
+        raise Exception('Provide subject or subject_query_file, but not both')
+
+    # do SPARQL query to obtain a list of subject IRIs
+    if subject_query_file is not None:
+        subject = _get_subjects(subject_query_file=subject_query_file)
+
+    # returns IRI to label
+    logger.info('Querying label')
+    subject_to_label_dict = _get_subject_to_label_dict(
+        subject_label_query_file=subject_label_query_file, subjects=subject)
+
+    logger.info('Getting subject coordinates')
+    subject_to_point_dict = _get_subject_to_point_dict(subject=subject)
+
+    # dictionary hierarchy [dataset_year][calculation][subject][distance]
+    overall_result = defaultdict(lambda: defaultdict(dict))
+    for exposure_table in exposure_table_list:
+        exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
+        dataset_year = _get_dataset_year(exposure_dataset_iri)
+        for calculation in rdf_type_list:
+            logger.info(
+                f"""Querying results for calculation: <{calculation}>, dataset: {exposure_table}""")
+            subject_to_result_dict = _get_subject_to_result_dict(
+                subject=subject, exposure=exposure_dataset_iri, calculation_type=calculation)
+            overall_result[dataset_year][calculation] = subject_to_result_dict
+
+    logger.info('Generating CSV file')
+    csv = _create_csv(overall_result=overall_result, subject_to_label_dict=subject_to_label_dict,
+                      subject_to_point_dict=subject_to_point_dict)
+
+    response = Response(csv.getvalue(), mimetype='text/csv')
+    response.headers["Content-Disposition"] = "attachment; filename=data.csv"
+    return response
