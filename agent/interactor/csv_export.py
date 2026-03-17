@@ -13,6 +13,7 @@ from collections import defaultdict
 import json
 from tqdm import tqdm
 import sys
+from datetime import datetime
 
 from agent.utils.ts_client import TimeSeriesClient
 
@@ -395,8 +396,12 @@ def _get_dataset_year(dataset_iri):
     """
 
     query_results = kg_client.remote_store_client.executeQuery(query)
-
-    return query_results.getJSONObject(0).getString('year')
+    try:
+        year = query_results.getJSONObject(0).getString('year')
+    except:
+        year = str(datetime.now().year)
+        logger.info(f"Dataset does not have a start date! Using '{year}' as year.")
+    return year
 
 
 def _chunk_list(values, chunk_size=1000):
