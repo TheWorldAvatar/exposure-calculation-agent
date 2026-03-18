@@ -16,6 +16,7 @@ import sys
 from datetime import datetime
 
 from agent.utils.ts_client import TimeSeriesClient
+from agent.utils.stack_gateway import stack_clients_view
 
 logger = agentlogging.get_logger('dev')
 
@@ -93,6 +94,16 @@ def trajectory():
     upperbound = request.args.get('upperbound')
     lowerbound = request.args.get('lowerbound')
 
+    include_lat_lng = request.args.get('include_lat_lng', 'true')
+    refresh_of_cache = request.args.get('refresh_of_cache', 'false')
+
+    # If requested, refresh the cache of the outgoing federation
+    # before querying it.
+    if refresh_of_cache.lower() == 'true':
+        of_rep_id = stack_clients_view.Rdf4jService.OUT_STACK_REPO_ID
+        logger.info(f"Refreshing outgoing federation ('{of_rep_id}') cache...")
+        stack_clients_view.Rdf4jClient.getInstance().refreshRepositoryCache(of_rep_id)
+
     data_iri_list_to_query = [subject]
     if trip_iri is not None:
         data_iri_list_to_query.append(trip_iri)
@@ -114,17 +125,18 @@ def trajectory():
         data_iri_list_to_query, lowerbound, upperbound)
     points = [wkt.loads(s) for s in time_series.get_value_list(subject)]
 
-    lat_list = []
-    lng_list = []
-
-    for point in points:
-        lat_list.append(point.y)
-        lng_list.append(point.x)
-
     time_list = time_series.get_timestamp_java(subject)
+    data_to_write = [time_list]
+    headers = ['time']
 
-    data_to_write = [time_list, lat_list, lng_list]
-    headers = ['time', 'lat', 'lng']
+    if include_lat_lng.lower() == 'true':
+        lat_list = []
+        lng_list = []
+        for point in points:
+            lat_list.append(point.y)
+            lng_list.append(point.x)
+        data_to_write.extend([lat_list, lng_list])
+        headers.extend(['lat', 'lng'])
 
     if trip_iri is not None:
         data_to_write.append(time_series.get_value_list(trip_iri))
