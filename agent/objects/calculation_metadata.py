@@ -3,6 +3,8 @@ import uuid
 from agent.utils import constants
 from dateutil.parser import parse
 
+from agent.utils.stack_configs import BLAZEGRAPH_URL
+
 
 class CalculationMetadataException(Exception):
     """Exception for CalculationMetadata"""
@@ -22,8 +24,10 @@ class CalculationMetadata():
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
         SELECT DISTINCT ?{var}
         WHERE {{
-            ?{var} a <{self.rdf_type}>.
-            {self.__get_where_clauses(var)}
+            SERVICE<{BLAZEGRAPH_URL}> {{
+                ?{var} a <{self.rdf_type}>.
+                {self.__get_where_clauses(var)}
+            }}
         }}
         """
         return query
