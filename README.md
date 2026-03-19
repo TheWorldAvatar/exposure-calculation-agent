@@ -386,11 +386,13 @@ The following APIs are used to initialise the necessary instances and trigger th
 3) /csv_export/trajectory (GET)
 
     Parameters:
-    - subject: IRI of subject
-    - rdf_type: RDF type of calculation
-    - exposure_table: table name of exposure dataset
-    - lowerbound (optional): lowerbound of trajectory time series
-    - upperbound (optional): upperbound of trajectory time series
+    - `subject`: IRI of subject
+    - `rdf_type`: RDF type of calculation
+    - `exposure_table`: table name of exposure dataset
+    - `lowerbound` (optional): lowerbound of trajectory time series
+    - `upperbound` (optional): upperbound of trajectory time series
+    - `include_lat_lng` (optional, default true): include geolocation in exported CSV file
+    - `refresh_of_cache` (optional, default false): refresh outgoing federation cache before querying
 
     Example usage:
 
