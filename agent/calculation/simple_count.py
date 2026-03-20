@@ -1,6 +1,7 @@
 from agent.calculation.calculation_input import CalculationInput
 from agent.calculation.shared_utils import get_iri_to_point_dict, instantiate_result_ontop
 from agent.objects.exposure_dataset import get_exposure_dataset
+from agent.utils import constants
 from agent.utils.postgis_client import postgis_client
 from twa import agentlogging
 from tqdm import tqdm
@@ -22,14 +23,30 @@ def simple_count(calculation_input: CalculationInput):
     with open("agent/calculation/resources/temp_table_vector.sql", "r") as f:
         temp_table_sql = f.read()
 
+    # handle dataset filters
+    where_clause = " AND ".join(
+        f"{k} = %({k})s" for k in calculation_input.calculation_metadata.dataset_filter)
+    if where_clause:
+        where_clause = f"WHERE {where_clause}"
+
+    params = {}
+    for key, value in calculation_input.calculation_metadata.dataset_filter.items():
+        params[key] = value
+
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
         with conn.cursor() as cur:
             # create temp table for efficiency
             temp_table = 'temp_table'
+
+            if exposure_dataset.geometry_column is not None:
+                geometry_column = exposure_dataset.geometry_column
+            else:
+                geometry_column = constants.VECTOR_GEOMETRY_COLUMN
+
             temp_table_sql = temp_table_sql.format(
-                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, GEOMETRY_COLUMN=exposure_dataset.geometry_column)
-            cur.execute(temp_table_sql)
+                TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, GEOMETRY_COLUMN=geometry_column, DATASET_FILTERS=where_clause)
+            cur.execute(temp_table_sql, params)
 
             count_sql = count_sql.format(TEMP_TABLE=temp_table)
 
@@ -47,5 +64,6 @@ def simple_count(calculation_input: CalculationInput):
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)
 
-    logger.info('Completed instantiation')
-    return 'Calculation complete', 200
+    complete_message = 'Completed calculation for count'
+    logger.info(complete_message)
+    return complete_message, 200

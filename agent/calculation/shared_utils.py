@@ -20,7 +20,9 @@ logger = agentlogging.get_logger('dev')
 rdf_type_to_unit = {
     constants.TRAJECTORY_COUNT: '',
     constants.TRAJECTORY_AREA: METRE_SQUARED,
-    constants.TRAJECTORY_AREA_WEIGHTED_SUM: METRE_SQUARED
+    constants.TRAJECTORY_AREA_WEIGHTED_SUM: METRE_SQUARED,
+    constants.TRAJECTORY_TIME_FILTER_COUNT: '',
+    constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED: ''
 }
 
 
@@ -68,6 +70,7 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
             execute_values(cur, insert_query, data)
 
     # upload mapping only if it has not been uploaded
+    logger.info('Uploading ontop mapping if it does not exist')
     _upload_ontop_mapping()
 
 
@@ -79,9 +82,10 @@ def _upload_ontop_mapping():
     query = f"SELECT * WHERE {{?r a <{EXPOSURE_RESULT}>}} LIMIT 1"
 
     # currently fixed to the default ontop container
-    query_result = kg_client.ontop_client.executeQuery(query)
+    query_result = json.loads(
+        kg_client.ontop_client.executeQuery(query).toString())
 
-    if query_result.isEmpty():
+    if not query_result:
         logger.info("Updating Ontop mapping...")
         ontop_mapping_path = Path('agent/calculation/resources/ontop.obda')
 
@@ -99,7 +103,10 @@ def _upload_ontop_mapping():
 
 
 def get_iri_to_point_dict(subject):
+    # returns points in EPSG:3857, to be used for ST_DWithin in queries
     from agent.utils.kg_client import kg_client
+    if not isinstance(subject, list):
+        subject = [subject]
 
     iri_to_point_dict = {}
     transformer = Transformer.from_crs(
@@ -142,6 +149,58 @@ def get_iri_to_point_dict(subject):
             iri_to_point_dict[sub] = projected_geom
 
     return iri_to_point_dict
+
+
+def get_iri_to_buffer_dict(subject, distance: float):
+    # returns buffers in 4326
+    from agent.utils.kg_client import kg_client
+
+    iri_to_buffer_dict = {}
+    transformer = Transformer.from_crs(
+        "EPSG:4326", "EPSG:3857", always_xy=True)
+
+    transformer_back = Transformer.from_crs(
+        "EPSG:3857", "EPSG:4326", always_xy=True)
+
+    query_template = """
+    SELECT ?subject ?wkt
+    WHERE {{
+        VALUES ?subject {{{values}}}.
+        ?subject <http://www.opengis.net/ont/geosparql#asWKT> ?wkt.
+    }}
+    """
+
+    logger.info(
+        'Querying geometries of subjects, number of subjects: ' + str(len(subject)))
+
+    query_list = []
+    # submit queries in batches to avoid crashing ontop
+    for chunk in _chunk_list(subject):
+        values = " ".join(f"<{s}>" for s in chunk)
+        query = query_template.format(values=values)
+        query_list.append(query)
+
+    for query in query_list:
+        query_result = json.loads(
+            kg_client.remote_store_client.executeQuery(query).toString())
+
+        for row in query_result:
+            sub = row['subject']
+            wkt_literal = row['wkt']
+
+            # strip RDF literal IRI, i.e. ^^<http://www.opengis.net/ont/geosparql#wktLiteral>
+            match = re.match(r'^"(.+)"\^\^<.+>$', wkt_literal)
+            if match:
+                geom = wkt.loads(match.group(1))
+            else:
+                geom = wkt.loads(wkt_literal)
+
+            projected_geom = transform(transformer.transform, geom)
+            buffered_geom = projected_geom.buffer(distance)
+            iri_to_buffer_dict[sub] = transform(
+                transformer_back.transform, buffered_geom)
+
+    return iri_to_buffer_dict
 
 
 def _chunk_list(values, chunk_size=10000):

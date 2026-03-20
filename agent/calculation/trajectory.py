@@ -1,34 +1,41 @@
+from zoneinfo import ZoneInfo
 from agent.calculation.shared_utils import instantiate_result_ontop
-from agent.objects.exposure_dataset import get_exposure_dataset
+from agent.objects.business_establishment import BusinessEstablishment
+from agent.objects.exposure_dataset import ExposureDataset, get_exposure_dataset
+from agent.objects.schedule import AdHocSchedule, RegularSchedule, SchedulePeriod
 from agent.utils import constants
 from agent.utils.ts_client import TimeSeriesClient
 from agent.calculation.calculation_input import CalculationInput
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point
 from twa import agentlogging
 from agent.utils.stack_gateway import stack_clients_view
 from agent.utils.postgis_client import postgis_client
 from agent.objects.trip import Trip
 from pyproj import Transformer, CRS
 import agent.utils.constants as constants
-import json
 from shapely import wkt
-from datetime import datetime
-from py4j.java_gateway import JavaObject
 from tqdm import tqdm
 import sys
+import json
+from datetime import datetime, date, time, timedelta
+from psycopg2.extras import RealDictCursor
 
 logger = agentlogging.get_logger('dev')
 
 rdf_type_to_sql_path = {
     constants.TRAJECTORY_COUNT: "agent/calculation/resources/count_trajectory.sql",
     constants.TRAJECTORY_AREA: "agent/calculation/resources/area_trajectory.sql",
-    constants.TRAJECTORY_AREA_WEIGHTED_SUM: "agent/calculation/resources/area_weighted_sum_trajectory.sql"
+    constants.TRAJECTORY_AREA_WEIGHTED_SUM: "agent/calculation/resources/area_weighted_sum_trajectory.sql",
+    constants.TRAJECTORY_TIME_FILTER_COUNT: "agent/calculation/resources/trajectory_iri.sql",
+    constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED: "agent/calculation/resources/trajectory_iri.sql"
 }
 
 rdf_type_to_ts_class = {
     constants.TRAJECTORY_COUNT: stack_clients_view.java.lang.Integer.TYPE,
     constants.TRAJECTORY_AREA: stack_clients_view.java.lang.Double.TYPE,
-    constants.TRAJECTORY_AREA_WEIGHTED_SUM: stack_clients_view.java.lang.Double.TYPE
+    constants.TRAJECTORY_AREA_WEIGHTED_SUM: stack_clients_view.java.lang.Double.TYPE,
+    constants.TRAJECTORY_TIME_FILTER_COUNT: stack_clients_view.java.lang.Integer.TYPE,
+    constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED: stack_clients_view.java.lang.Integer.TYPE
 }
 
 
@@ -48,7 +55,7 @@ def trajectory(calculation_input: CalculationInput):
 
     logger.info('Querying time series')
 
-    points, trip_list, time_list = _get_time_series_sparql(
+    points, trip_list, java_time_list, timestamp_list = _get_time_series_sparql(
         calculation_input.subject, trip_iri, lowerbound, upperbound)
 
     if len(points) == 0:
@@ -61,16 +68,18 @@ def trajectory(calculation_input: CalculationInput):
 
     transformer = Transformer.from_crs(
         "EPSG:4326", CRS.from_proj4(proj4text), always_xy=True)
-    points = [transformer.transform(p.x, p.y) for p in points]
+    points = [Point(transformer.transform(p.x, p.y)) for p in points]
 
     logger.info('Processing trips')
     if trip_iri is not None:
         # split trajectory into trips
-        trips = _process_trip(trip_list, points)
+        trips = _process_trip(trip_list, points, timestamp_list)
     else:
         # entire trajectory considered as a single trip
-        trips = [Trip(trajectory=LineString(points), lower_index=0,
-                      upper_index=len(points) - 1)]
+        trips = [Trip(full_points_list=points,
+                      lower_index=0,
+                      upper_index=len(points) - 1,
+                      full_time_list=timestamp_list)]
 
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
@@ -79,21 +88,27 @@ def trajectory(calculation_input: CalculationInput):
 
     # create temp table for efficiency
     temp_table = 'temp_table'
+    columns = ["""ST_Transform(ST_Transform({GEOMETRY_COLUMN}, 4326), '{PROJ4_TEXT}') AS wkb_geometry""".format(
+        GEOMETRY_COLUMN=exposure_dataset.geometry_column, PROJ4_TEXT=proj4text)]
+
+    # different calculation types require different additional columns
+    # area weighted sum requires area and associated value of each pixel
+    # time filter needs the iri of the feature for time filtering later, where data are stored as triples
     if calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_AREA_WEIGHTED_SUM:
-        with open("agent/calculation/resources/temp_table_area_weighted_trajectory.sql", "r") as f:
-            temp_table_sql = f.read()
-        temp_table_sql = temp_table_sql.format(
-            TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, PROJ4_TEXT=proj4text, GEOMETRY_COLUMN=exposure_dataset.geometry_column, VALUE_COLUMN=exposure_dataset.value_column, AREA_COLUMN=exposure_dataset.area_column)
-    else:
-        with open("agent/calculation/resources/temp_table_trajectory.sql", "r") as f:
-            temp_table_sql = f.read()
-        temp_table_sql = temp_table_sql.format(
-            TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name, PROJ4_TEXT=proj4text, GEOMETRY_COLUMN=exposure_dataset.geometry_column)
+        columns.append(exposure_dataset.area_column + ' AS area')
+    elif calculation_input.calculation_metadata.rdf_type in [constants.TRAJECTORY_TIME_FILTER_COUNT, constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED]:
+        columns.append(exposure_dataset.iri_column + ' AS iri')
+
+    select_clause = ",\n       ".join(columns)
+
+    with open("agent/calculation/resources/temp_table_trajectory.sql", "r") as f:
+        temp_table_sql = f.read()
+    temp_table_sql = temp_table_sql.format(
+        TEMP_TABLE=temp_table, SELECT_CLAUSE=select_clause, EXPOSURE_DATASET=exposure_dataset.table_name)
 
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
-        with conn.cursor() as cur:
-
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(temp_table_sql)
 
             calculation_sql = calculation_sql.format(TEMP_TABLE=temp_table)
@@ -109,10 +124,15 @@ def trajectory(calculation_input: CalculationInput):
                 cur.execute(calculation_sql, replacements)
                 if cur.description:
                     query_result = cur.fetchall()
-                    if query_result[0][0] is None:
-                        trip.set_exposure_result(0)
+                    if calculation_input.calculation_metadata.rdf_type in [constants.TRAJECTORY_TIME_FILTER_COUNT, constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED]:
+                        iri_wkt_dict = {row['iri']: row['wkt']
+                                        for row in query_result}
+                        trip.set_iri_wkt_dict(iri_wkt_dict)
                     else:
-                        trip.set_exposure_result(query_result[0][0])
+                        if query_result[0]['exposure_result'] is None:
+                            trip.set_exposure_result(0)
+                        else:
+                            trip.set_exposure_result(query_result[0][0])
 
     # check if an existing result time series exists
     result_iri = _get_exposure_result(calculation_input)
@@ -131,17 +151,25 @@ def trajectory(calculation_input: CalculationInput):
         ts_client.add_columns(time_series_iri=time_series_iri, data_iri=[result_iri], class_list=[
                               rdf_type_to_ts_class[calculation_input.calculation_metadata.rdf_type]])
 
+    if calculation_input.calculation_metadata.rdf_type in [constants.TRAJECTORY_TIME_FILTER_COUNT, constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED]:
+        timezone = _get_time_zone(centroid)
+        _process_time_filter(trips=trips, timezone=timezone,
+                             exposure_dataset=exposure_dataset, calculation_type=calculation_input.calculation_metadata.rdf_type)
+
     # create a Java time series object to upload to database
     result_time_series = _create_result_time_series(
-        trips, result_iri=result_iri, time_list=time_list, ts_client=ts_client)
+        trips, result_iri=result_iri, time_list=java_time_list, ts_client=ts_client)
 
     # uploads data to database
     ts_client.add_time_series(result_time_series)
 
-    return 'Trajectory count complete', 200
+    complete_message = 'Trajectory calculation complete'
+    logger.info(complete_message)
+
+    return complete_message, 200
 
 
-def _process_trip(trip_index_array, points):
+def _process_trip(trip_index_array, points: list[Point], timestamp_list):
     """
     returns a list of Trip objects
    """
@@ -149,16 +177,26 @@ def _process_trip(trip_index_array, points):
     current_trip_index = trip_index_array[0]  # index given by trip calculation
     lowerbound_index = 0  # position in the trajectory array
 
-    # records a new tuple every time the trip index changes
+    # records a new trip every time the trip index changes
     for i in range(1, len(trip_index_array)):
         if trip_index_array[i] != current_trip_index:
+            upperbound_index = i - 1
+
             trips.append(
-                Trip(upper_index=i-1, lower_index=lowerbound_index, trajectory=LineString(points[lowerbound_index:i-1])))
+                Trip(upper_index=upperbound_index,
+                     lower_index=lowerbound_index,
+                     full_points_list=points,
+                     full_time_list=timestamp_list))
+
             lowerbound_index = i
             current_trip_index = trip_index_array[i]
         elif i == len(trip_index_array) - 1:
-            trips.append(Trip(upper_index=i, lower_index=lowerbound_index,
-                         trajectory=LineString(points[lowerbound_index:i])))
+            upperbound_index = i
+
+            trips.append(Trip(upper_index=upperbound_index,
+                              lower_index=lowerbound_index,
+                         full_points_list=points,
+                         full_time_list=timestamp_list))
 
     return trips
 
@@ -222,6 +260,10 @@ def _get_exposure_result(calculation_input: CalculationInput):
 
 def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
     from agent.utils.kg_client import kg_client
+
+    # check time class, exception will be thrown if checks fail
+    kg_client.check_time_class(subject)
+
     values_list = [subject]
     if trip is not None:
         values_list.append(trip)
@@ -235,4 +277,351 @@ def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
     else:
         trip_list = []
 
-    return points, trip_list, time_series.get_timestamp_java(subject)
+    return points, trip_list, time_series.get_timestamp_java(subject), time_series.get_timestamp(subject)
+
+
+def _get_time_zone(centroid: Point):
+    from agent.utils.kg_client import kg_client
+
+    query = f"""
+    PREFIX exposure: <https://www.theworldavatar.com/kg/ontoexposure/>
+    PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+    PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+    SELECT ?tzid
+    WHERE {{
+        ?x a exposure:TimeZone; geo:asWKT ?timezone_wkt; exposure:tzid ?tzid.
+        FILTER(geof:sfWithin("{centroid.wkt}"^^geo:wktLiteral, ?timezone_wkt))
+    }}
+    """
+
+    query_result = json.loads(
+        kg_client.remote_store_client.executeQuery(query).toString())
+
+    if len(query_result) == 1:
+        return query_result[0]['tzid']
+    else:
+        raise Exception('Unexpected query size while getting time zone')
+
+
+def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: ExposureDataset, calculation_type: str):
+    # check if trips fall into range of datasets
+    tz = ZoneInfo(timezone)
+    trips_to_consider = []
+    if None not in (exposure_dataset.start_date, exposure_dataset.end_date):
+        for trip in trips:
+            if exposure_dataset.start_date <= trip.lowerbound_time.astimezone(tz).date() <= trip.upperbound_time.astimezone(tz).date() <= exposure_dataset.end_date:
+                trips_to_consider.append(trip)
+    else:
+        logger.warning(
+            'Dataset start and end dates are not instantiated, hence ignored')
+        trips_to_consider = trip
+
+    # there are no valid trips
+    if not trips_to_consider:
+        return
+
+    # collect a flattened iri list of all intersected establishments
+    iri_list = []
+    for trip in trips_to_consider:
+        iri_list += trip.get_iri_list()
+
+    # there are no features to consider
+    if not iri_list:
+        return
+
+    # combine dicts holding wkt values, some features may appear in multiple trips
+    combined_iri_wkt_dict = {}
+    for trip in trips_to_consider:
+        combined_iri_wkt_dict.update(trip.iri_wkt_dict)
+
+    # remove duplicates
+    iri_set = set(iri_list)
+    business_establishments = {
+        iri: BusinessEstablishment(iri=iri, wkt_string=combined_iri_wkt_dict[iri]) for iri in iri_set}
+
+    _set_business_start_end(business_establishments)
+    _set_regular_schedules(business_establishments)
+    _set_adhoc_schedules(business_establishments)
+    if calculation_type == constants.TRAJECTORY_TIME_FILTER_COUNT:
+        _opening_hours_filter_full_containment(
+            trips_to_consider, tz, business_establishments)
+    elif calculation_type == constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED:
+        _opening_hours_filter_closest_point(
+            trips_to_consider, tz, business_establishments)
+
+
+def _set_business_start_end(business_establishments: dict[str, BusinessEstablishment]):
+    from agent.utils.kg_client import kg_client
+    varname = 'feature'
+    values = " ".join(f"<{iri}>" for iri in business_establishments)
+    values_clause = f"VALUES ?{varname} {{ {values} }}"
+
+    with open("agent/calculation/resources/business_start_end.sparql", "r") as f:
+        business_start_end_sparql = f.read().format(
+            VALUES_CLAUSE=values_clause, VARNAME=varname)
+
+    query_result = json.loads(kg_client.remote_store_client.executeQuery(
+        business_start_end_sparql).toString())
+
+    # please refer to the template for the variable names
+    for entry in query_result:
+        # support both date and timestamp
+        try:
+            start = date.fromisoformat(entry['start_time'])
+            end = date.fromisoformat(entry['end_time'])
+        except Exception():
+            start = datetime.fromisoformat(entry['start_time'])
+            end = datetime.fromisoformat(entry['end_time'])
+        business_establishments[entry[varname]].add_business_start_and_end(
+            business_start=start, business_end=end)
+
+
+def _set_adhoc_schedules(business_establishments: dict[str, BusinessEstablishment]):
+    from agent.utils.kg_client import kg_client
+    varname = 'feature'
+    values = " ".join(f"<{iri}>" for iri in business_establishments)
+    values_clause = f"VALUES ?{varname} {{ {values} }}"
+
+    with open("agent/calculation/resources/adhoc_opening_hours.sparql", "r") as f:
+        opening_hours_sparql = f.read().format(
+            VALUES_CLAUSE=values_clause, VARNAME=varname)
+
+    query_result = json.loads(kg_client.remote_store_client.executeQuery(
+        opening_hours_sparql).toString())
+
+    feature_to_schedule_dict = {}  # multiple schedules allowed
+    schedule_start_date_dict = {}  # single value only, optional
+    schedule_end_date_dict = {}  # single value only, optional
+    schedule_to_period_dict = {}  # multiple periods allowed, e.g. 1000-1200, 1300-1700
+    period_to_start_time_dict = {}  # single value only, optional
+    period_to_end_time_dict = {}  # single value only, optional
+    schedule_to_entries_dict = {}  # multiple entries allowed
+
+    for entry in query_result:
+        # compulsory variables
+        feature = entry['feature']
+        schedule = entry['schedule']
+        entry_date = entry['entry_date']
+
+        if feature not in feature_to_schedule_dict:
+            feature_to_schedule_dict[feature] = set()
+
+        feature_to_schedule_dict[feature].add(schedule)
+
+        if schedule not in schedule_to_entries_dict:
+            schedule_to_entries_dict[schedule] = set()
+
+        if schedule not in schedule_to_period_dict:
+            schedule_to_period_dict[schedule] = set()
+
+        schedule_to_entries_dict[schedule].add(date.fromisoformat(entry_date))
+
+        if 'schedule_start_date' in entry:
+            schedule_start_date_dict[schedule] = date.fromisoformat(
+                entry['schedule_start_date'])
+
+        if 'schedule_end_date' in entry:
+            schedule_end_date_dict[schedule] = date.fromisoformat(
+                entry['schedule_end_date'])
+
+        if 'timeperiod' in entry:
+            # if period does not exist it is assumed to be closed for the day
+            period = entry['timeperiod']
+            schedule_to_period_dict[schedule].add(period)
+            period_to_start_time_dict[period] = time.fromisoformat(
+                entry['start_time'])
+            period_to_end_time_dict[period] = time.fromisoformat(
+                entry['end_time'])
+
+    for feature in feature_to_schedule_dict:
+        schedules = feature_to_schedule_dict[feature]
+
+        for schedule in schedules:
+            entry_dates = schedule_to_entries_dict[schedule]
+
+            schedule_periods = [SchedulePeriod(start_time=period_to_start_time_dict[period],
+                                               end_time=period_to_end_time_dict[period]) for period in schedule_to_period_dict[schedule]]
+
+            ad_hoc_schedule = AdHocSchedule(
+                iri=schedule, entry_dates=entry_dates)
+
+            if schedule in schedule_start_date_dict and schedule in schedule_end_date_dict:
+                ad_hoc_schedule.set_start_date(
+                    schedule_start_date_dict[schedule])
+                ad_hoc_schedule.set_end_date(schedule_end_date_dict[schedule])
+
+            for schedule_period in schedule_periods:
+                ad_hoc_schedule.add_period(schedule_period)
+
+            business_establishments[feature].add_ad_hoc_schedule(
+                ad_hoc_schedule)
+
+
+def _set_regular_schedules(business_establishments: dict[str, BusinessEstablishment]):
+    from agent.utils.kg_client import kg_client
+    varname = 'feature'
+    values = " ".join(f"<{iri}>" for iri in business_establishments)
+    values_clause = f"VALUES ?{varname} {{ {values} }}"
+
+    with open("agent/calculation/resources/regular_opening_hours.sparql", "r") as f:
+        opening_hours_sparql = f.read().format(
+            VALUES_CLAUSE=values_clause, VARNAME=varname)
+
+    query_result = json.loads(kg_client.remote_store_client.executeQuery(
+        opening_hours_sparql).toString())
+
+    feature_to_schedule_dict = {}  # multiple schedules allowed
+    schedule_days_dict = {}  # multiple days allowed
+    schedule_start_date_dict = {}  # single value only
+    schedule_end_date_dict = {}  # single value only
+    schedule_to_period_dict = {}  # multiple periods allowed, e.g. 1000-1200, 1300-1700
+    period_to_start_time_dict = {}  # single value only
+    period_to_end_time_dict = {}  # single value only
+
+    # one schedule can repeat over multiple days, but can only have one time range
+    # please refer to the template for the variable names
+    for entry in query_result:
+        # compulsory variables
+        feature = entry['feature']
+        schedule = entry['schedule']
+        day = entry['reccurent_day']
+
+        if feature not in feature_to_schedule_dict:
+            feature_to_schedule_dict[feature] = set()
+
+        feature_to_schedule_dict[feature].add(schedule)
+
+        if schedule not in schedule_days_dict:
+            schedule_days_dict[schedule] = set()
+
+        schedule_days_dict[schedule].add(day)
+
+        if schedule not in schedule_to_period_dict:
+            schedule_to_period_dict[schedule] = set()
+
+        if 'schedule_start_date' in entry:
+            schedule_start_date_dict[schedule] = date.fromisoformat(
+                entry['schedule_start_date'])
+
+        if 'schedule_end_date' in entry:
+            schedule_end_date_dict[schedule] = date.fromisoformat(
+                entry['schedule_end_date'])
+
+        if 'timeperiod' in entry:
+            # if period does not exist it is assumed to be closed for the day
+            period = entry['timeperiod']
+            schedule_to_period_dict[schedule].add(period)
+            period_to_start_time_dict[period] = time.fromisoformat(
+                entry['start_time'])
+            period_to_end_time_dict[period] = time.fromisoformat(
+                entry['end_time'])
+
+    for feature in feature_to_schedule_dict:
+        schedules = feature_to_schedule_dict[feature]
+
+        for schedule in schedules:
+            days = schedule_days_dict[schedule]
+
+            schedule_periods = [SchedulePeriod(start_time=period_to_start_time_dict[period],
+                                               end_time=period_to_end_time_dict[period]) for period in schedule_to_period_dict[schedule]]
+
+            regular_schedule = RegularSchedule(iri=schedule, days=days)
+
+            if schedule in schedule_start_date_dict and schedule in schedule_end_date_dict:
+                regular_schedule.set_start_date(
+                    schedule_start_date_dict[schedule])
+                regular_schedule.set_end_date(schedule_end_date_dict[schedule])
+
+            for schedule_period in schedule_periods:
+                regular_schedule.add_period(schedule_period)
+
+            business_establishments[feature].add_regular_schedule(
+                regular_schedule)
+
+
+def _opening_hours_filter_full_containment(trips: list[Trip], timezone: ZoneInfo, business_establishments: dict[str, BusinessEstablishment]):
+    for trip in trips:
+        number = 0
+        iri_list = []
+
+        trip_lb = trip.lowerbound_time.astimezone(timezone)
+        trip_ub = trip.upperbound_time.astimezone(timezone)
+
+        for iri in trip.get_iri_list():
+            business_establishment = business_establishments[iri]
+
+            if business_establishment.business_exists(lowerbound_time=trip_lb, upperbound_time=trip_ub) \
+                    and _is_open_trip_full_containment(trip_lb=trip_lb, trip_ub=trip_ub, business_establishment=business_establishment):
+                number += 1
+                iri_list.append(iri)
+
+        trip.set_exposure_result(number)
+
+
+def _is_open_trip_full_containment(trip_lb: datetime, trip_ub: datetime, business_establishment: BusinessEstablishment):
+    datetime_ranges = _split_by_day(start=trip_lb, end=trip_ub)
+
+    # each portion of the trip needs to be within the opening hours
+    all_open = all(
+        business_establishment.is_open_full_containment(
+            lowerbound_time=dt_start,
+            upperbound_time=dt_end
+        )
+        for dt_start, dt_end in datetime_ranges
+    )
+
+    return all_open
+
+
+def _opening_hours_filter_closest_point(trips: list[Trip], timezone: ZoneInfo, business_establishments: dict[str, BusinessEstablishment]):
+    for trip in trips:
+        number = 0
+        iri_list = []
+        trip_lb = trip.lowerbound_time.astimezone(timezone)
+        trip_ub = trip.upperbound_time.astimezone(timezone)
+
+        for iri in trip.get_iri_list():
+            business_establishment = business_establishments[iri]
+
+            if business_establishment.business_exists(lowerbound_time=trip_lb, upperbound_time=trip_ub) \
+                    and _is_open_trip_partial_overlap(trip_lb=trip_lb, trip_ub=trip_ub, business_establishment=business_establishment) \
+                    and business_establishment.is_open_closest_point(trip=trip):
+                number += 1
+                iri_list.append(iri)
+
+        trip.set_exposure_result(number)
+
+
+def _is_open_trip_partial_overlap(trip_lb: datetime, trip_ub: datetime, business_establishment: BusinessEstablishment):
+    datetime_ranges = _split_by_day(start=trip_lb, end=trip_ub)
+
+    any_overlap = any(
+        business_establishment.is_open_partial_overlap(
+            lowerbound_time=dt_start,
+            upperbound_time=dt_end
+        )
+        for dt_start, dt_end in datetime_ranges
+    )
+
+    return any_overlap
+
+
+def _split_by_day(start: datetime, end: datetime):
+    if start > end:
+        raise ValueError("start must be <= end")
+
+    result = []
+    current = start
+
+    while current.date() < end.date():
+        day_end = datetime.combine(
+            current.date(),
+            time(23, 59),
+            tzinfo=current.tzinfo,
+        )
+        result.append((current, day_end))
+        current = day_end + timedelta(minutes=1)
+
+    # last segment
+    result.append((current, end))
+    return result

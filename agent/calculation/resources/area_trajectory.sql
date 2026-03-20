@@ -5,6 +5,6 @@ WITH buffer_circle AS (
     ) AS geom
 )
 
-SELECT SUM(ST_Area(ST_Intersection(wkb_geometry, buffer_circle.geom)))
+SELECT SUM(ST_Area(ST_Intersection(wkb_geometry, buffer_circle.geom))) As exposure_result
 FROM {TEMP_TABLE}, buffer_circle
 WHERE ST_Intersects(wkb_geometry, buffer_circle.geom)

@@ -1,7 +1,7 @@
-from flask import Blueprint, request, Response
-import requests
+from flask import Blueprint, request
+from itertools import product
 from twa import agentlogging
-from agent.calculation.api import CALCULATE_ROUTE
+from agent.calculation.api import do_calculation
 from agent.interactor.initialise_calculation import initialise_calculation
 from agent.objects.calculation_metadata import CalculationMetadata
 import agent.utils.constants as constants
@@ -24,6 +24,98 @@ def delete_time_series():
     return 'Deleted data'
 
 
+@trigger_calculation_bp.route('/bulk', methods=['POST'])
+def bulk_trigger_calculation():
+    from agent.utils.kg_client import kg_client
+    inputs = request.json
+    exposure_table = inputs['exposure_table']
+    rdf_types = inputs['rdf_types']
+    distances = inputs['distances']
+
+    upperbound = None
+    if 'upperbound' in inputs:
+        upperbound = inputs['upperbound']
+
+    lowerbound = None
+    if 'lowerbound' in inputs:
+        lowerbound = inputs['lowerbound']
+
+    dataset_filters = [{}]
+    if 'dataset_filter_values' in inputs:
+        dataset_filter_values = inputs['dataset_filter_values']
+        # produces a cartesian product between the dataset_filter_values
+        dataset_filters = [
+            dict(zip(dataset_filter_values.keys(), combo))
+            for combo in product(*dataset_filter_values.values())
+        ]
+
+    # IRI(s) of subject to calculate
+    subject = None
+    # query to obtain subject IRIs
+    subject_query_file = None
+
+    if 'subject' in inputs:
+        subject = inputs['subject']
+
+    if 'subject_query_file' in inputs:
+        subject_query_file = inputs['subject_query_file']
+
+    if subject is not None and subject_query_file is not None:
+        raise Exception('Provide subject or subject_query_file, but not both')
+
+    # do SPARQL query to obtain a list of subject IRIs
+    if subject_query_file is not None:
+        with open(Path(constants.BIND_MOUNT_PATH)/subject_query_file, "r") as f:
+            query = f.read()
+
+        parsed = parseQuery(query)
+
+        if len(parsed[1]['projection']) != 1:
+            raise Exception(
+                'Provided query needs to have exactly one select variable')
+
+        select_var = str(parsed[1]['projection'][0]['var'])
+
+        logger.info(
+            'Querying subject IRIs with provided SPARQL query template')
+        query_result = json.loads(
+            kg_client.remote_store_client.executeQuery(query).toString())
+
+        logger.info('Received ' + str(len(query_result)) + ' IRIs')
+
+        if len(query_result) == 0:
+            logger.warning('There are no subject IRIs')
+            return
+
+        subject_list = []
+        for i in query_result:
+            subject_list.append(i[select_var])
+
+    # get dataset iri to pass the core calculation agent
+    exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
+
+    for rdf_type in rdf_types:
+        for distance in distances:
+            for dataset_filter in dataset_filters:
+                # this will initialise a calculation if it does not exist and return the instantiated iri, or return an existing iri
+                calculation_iri = initialise_calculation(CalculationMetadata(
+                    rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, dataset_filter=dataset_filter))
+
+                logger.info('Calling core calculation agent')
+
+                # call core calculation agent
+                do_calculation(subject=subject if subject is not None else subject_list,
+                               calculation=calculation_iri, exposure=exposure_dataset_iri)
+
+                logger.info(
+                    f"""
+                        Completed calculation for: rdf_type={rdf_type}, distance={distance}, upperbound={upperbound}, 
+                        lowerbound={lowerbound}, dataset_filter={dataset_filter}
+                    """)
+
+    return f"Finished all calculations for request: {inputs}"
+
+
 @trigger_calculation_bp.route('/', methods=['POST'])
 def trigger_calculation():
     from agent.utils.kg_client import kg_client
@@ -42,6 +134,10 @@ def trigger_calculation():
 
     # query to obtain subject IRIs
     subject_query_file = request.args.get('subject_query_file')
+
+    dataset_filter = request.args.get('dataset_filter')
+    if dataset_filter:
+        dataset_filter = json.loads(dataset_filter)
 
     if subject is not None and subject_query_file is not None:
         raise Exception('Provide subject or subject_query_file, but not both')
@@ -79,18 +175,15 @@ def trigger_calculation():
 
     # this will initialise a calculation if it does not exist and return the instantiated iri, or return an existing iri
     calculation_iri = initialise_calculation(CalculationMetadata(
-        rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound))
+        rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, dataset_filter=dataset_filter))
 
     logger.info('Calling core calculation agent')
 
     # call core calculation agent
-    agent_response = requests.post('http://localhost:5000' + CALCULATE_ROUTE, json={
-                                   "calculation": calculation_iri, "subject": subject if subject is not None else subject_list, "exposure": exposure_dataset_iri})
+    agent_response = do_calculation(subject=subject if subject is not None else subject_list,
+                                    calculation=calculation_iri, exposure=exposure_dataset_iri)
 
-    consolidated_response = agent_response.text + \
-        '\n' + str(request.args.to_dict())
-
-    return Response(response=consolidated_response, status=agent_response.status_code, content_type=agent_response.headers.get('Content-Type'))
+    return agent_response
 
 
 def get_dataset_iri(table_name):

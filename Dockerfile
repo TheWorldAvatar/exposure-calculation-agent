@@ -8,9 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # Set the default shell
-RUN python -m pip install --upgrade pip && \
-    python -m pip install gunicorn && \
-    apt update &&\
+RUN apt update &&\
     apt install -y openjdk-21-jre-headless git &&\
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
@@ -48,6 +46,8 @@ CMD [ \
     ]
 
 FROM base AS production
+RUN python -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install --upgrade gunicorn
 #------------------------------------
 # entry point setup
 #------------------------------------

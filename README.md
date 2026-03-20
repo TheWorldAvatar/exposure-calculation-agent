@@ -111,7 +111,7 @@ Time series data:
 | 2 | POINT(3 4)    |
 | 3 | POINT(5 6)    |
 
-A trajectory can be accompanied by trip data instantiated by the trip agent (<https://github.com/TheWorldAvatar/trip-agent>), the trip data shares the same time series as the subject of exposure:
+A trajectory can be accompanied by trip data instantiated by the trip agent (<https://github.com/TheWorldAvatar/trip-agent>), the trip data shares the same time values as the subject of exposure:
 
 | Time |     Point     | Trip |
 |------|---------------|------|
@@ -126,7 +126,7 @@ Points to a table in PostGIS, assumed to be uploaded using the stack data upload
 
 ```ttl
 <http://dataset> a dcat:Dataset;
-    dcterm:title 'table_name'.
+    dcterms:title 'table_name'.
 ```
 
 The dataset type (raster or vector) depends on the calculation type
@@ -228,6 +228,7 @@ Distance is mandatory, whereas upper and lower bounds are optional.
 Overview: Counts features that are near each subject using ST_DWithin. [SQL query template here](./agent/calculation/resources/count.sql)
 
 Requirements:
+
 Subject: Any fixed vector with a WKT literal associated via geo:asWKT.
 Exposure: Any vector dataset uploaded via the stack data uploader.
 
@@ -249,6 +250,7 @@ Exposure dataset, optional to specify a custom geometry column name, if it is no
 Overview: Calculates intersected area between the buffered trajectory and specified dataset. [SQL query template here](./agent/calculation/resources/area_trajectory.sql)
 
 Requirements:
+
 Subject: Point time series
 Exposure: A polygon dataset
 
@@ -272,6 +274,7 @@ Exposure dataset, optional to specify a custom geometry column name, if it is no
 Overview: Calculates intersected area between a buffered point and polygons in a specified dataset. [SQL query template here](./agent/calculation/resources/area.sql)
 
 Requirements:
+
 Subject: Any fixed vector with a WKT literal associated via geo:asWKT, can be a list of IRI
 Exposure: A polygon dataset
 
@@ -288,19 +291,20 @@ Exposure dataset, optional to specify a custom geometry column name, if it is no
 
 #### Area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`)
 
-Overview: Applies a buffer around a subject and find the intersected elements in the exposure dataset. Then sums up the product of area and value of each intersected polygon. The exposure dataset is expected to be a vector dataset converted from a raster dataset via ST_PixelAsPolygons. For efficiency, the area of each polygon is precalculated, if a polygon is intersected partially, the whole area will be taken into account. If the polygons are small (converted from pixel), the error from this approximation should be small.
+Overview: Applies a buffer around a subject and find the intersected pixels in the exposure dataset. Sums up the product of area of the pixel and the value associated with the pixel.
 
-[SQL query template here](agent/calculation/resources/area_weighted_sum.sql).
+Requirements:
+
+Subject: Any vector with a WKT literal associated via geo:asWKT, can be a list of IRI
+Exposure: A raster dataset with an area attached to each tile
+
+[SQL query template here](agent/calculation/resources/area_weighted_sum_by_raster.sql).
 
 The following shows the equation:
 
 $\sum_{i=1}^N (A_i \times x_i)$
 
 where $i$ represents each cell enclosed by the buffer around the subject, $A_i=$ area of cell $i$, $N$ is the number of cells enclosed by the buffer and $x_i$ is the value associated with the cell.
-
-Requirements:
-Subject: Any vector with a WKT literal associated via geo:asWKT, can be a list of IRI
-Exposure: A vector dataset with a value attached to each polygon
 
 Calculation instance:
 
@@ -314,7 +318,6 @@ Exposure dataset, needs to have the area and value columns specified, if geometr
 ```ttl
 <http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
-    <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val";
     <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
 ```
 
@@ -363,7 +366,7 @@ The following APIs are used to initialise the necessary instances and trigger th
     ```
 
     Overview:
-    1) This route checks whether a calculation instance with the specified RDF type and metadata (e.g. distance) exists, then instantiate one if necessary. 
+    1) This route checks whether a calculation instance with the specified RDF type and metadata (e.g. distance) exists, then instantiate one if necessary.
     2) If `subject_query_file` is given, it will run the query to obtain the subject IRIs, otherwise IRI is simply obtained from the `subject` parameter.
     3) Then it queries the dataset IRI of the given `exposure_table`, because the core agent is designed to read in IRIs only.
     4) Finally sends a request to the core agent with the IRIs of subject, exposure, and calculation.
@@ -400,6 +403,36 @@ The following APIs are used to initialise the necessary instances and trigger th
     curl -o trajectory_result.csv 'http://localhost:3838/exposure-calculation-agent/csv_export/trajectory?rdf_type=https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea&subject=http://trip_trajectory&exposure_table=parks_2016&lowerbound=1715759710072&upperbound=1715759730231'
     ```
 
-## Note on Ontop usage
+4) /trigger_calculation/bulk (POST)
 
-[agent/calculation/resources/ontop.obda](agent/calculation/resources/ontop.obda) shows some triples that make use of the entire value of a table entry, e.g. `<{subject}>`, instead of something like `derivation:{id}`. When these are mixed together, mappings that make use of `<https://w3id.org/obda/vocabulary#isCanonicalIRIOf>` (Ontop's function to mark two IRIs are equivalent) may not work properly.
+   No parameters, instead inputs to be provided in the request body as JSON, e.g.
+
+   ```bash
+    curl -X POST "http://localhost:3838/exposure-calculation-agent/trigger_calculation/bulk" -H "Content-Type: application/json" -d @body.json
+    ```
+
+    where the content of **body.json** is something like
+
+    ```json
+    {
+        "exposure_table": "ndvi_raster",
+        "rdf_types": [
+            "https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum"
+        ],
+        "distances": [
+            400,
+            800,
+            1000
+        ],
+        "dataset_filter_values": {
+            "year": [
+            2016
+            ]
+        },
+        // provide either subject_query_file or subject, not both
+        "subject_query_file": "subject_query.sparql",
+        "subject": "http://subject"
+    }
+    ```
+
+    dataset_filter_values is optional.

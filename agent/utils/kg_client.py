@@ -184,6 +184,27 @@ class KgClient():
             class_name = self.get_java_time_class(iri)
             return stack_clients_view.TimeSeriesClientFactory.timestampFactory(class_name, time)
 
+    def check_time_class(self, iri: str):
+        query = f"""
+        PREFIX timeseries: <https://www.theworldavatar.com/kg/ontotimeseries/>
+        SELECT ?time_class
+        WHERE {{
+        <{iri}> timeseries:hasTimeSeries/timeseries:hasTimeClass ?time_class
+        }}
+        """
+
+        query_results = kg_client.remote_store_client.executeQuery(query)
+
+        query_results_parsed = json.loads(query_results.toString())
+
+        if query_results_parsed:
+            time_class = query_results_parsed[0]['time_class']
+            if time_class not in ['java.time.Instant', 'java.time.ZonedDateTime']:
+                raise Exception(
+                    f"Detected time class {time_class} is not supported")
+        else:
+            raise Exception(f"Not able to obtain time class of <{iri}>")
+
 
 class RetryRemoteStoreClient:
     def __init__(self, java_client, max_retries=3, delay=10):

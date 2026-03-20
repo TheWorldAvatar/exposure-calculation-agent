@@ -13,13 +13,13 @@ from psycopg2.extras import RealDictCursor
 logger = agentlogging.get_logger('dev')
 
 
-def area_weighted_sum(calculation_input: CalculationInput):
+def raster_area(calculation_input: CalculationInput):
     iri_to_buffer_dict = get_iri_to_buffer_dict(
         subject=calculation_input.subject, distance=calculation_input.calculation_metadata.distance)
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
-    with open("agent/calculation/resources/area_weighted_sum_by_raster.sql", "r") as f:
-        area_weighted_sum_by_raster_sql = f.read()
+    with open("agent/calculation/resources/raster_area.sql", "r") as f:
+        raster_area_sql = f.read()
 
     where_clauses = []
     params = {}
@@ -32,7 +32,7 @@ def area_weighted_sum(calculation_input: CalculationInput):
     else:
         geometry_column = constants.RASTER_GEOMETRY_COLUMN
 
-    area_weighted_sum_by_raster_sql = area_weighted_sum_by_raster_sql.format(
+    raster_area_sql = raster_area_sql.format(
         EXPOSURE_DATASET=exposure_dataset.table_name, GEOMETRY_COLUMN=geometry_column, AREA_COLUMN=exposure_dataset.area_column, DATASET_FILTERS="\n".join(where_clauses))
 
     logger.info('Submitting SQL queries for calculations')
@@ -43,7 +43,7 @@ def area_weighted_sum(calculation_input: CalculationInput):
             for iri, buffer in tqdm(iri_to_buffer_dict.items(), mininterval=60, ncols=80, file=sys.stdout):
                 params['GEOMETRY_PLACEHOLDER'] = buffer.wkt
 
-                cur.execute(area_weighted_sum_by_raster_sql, params)
+                cur.execute(raster_area_sql, params)
                 if cur.description:
                     query_result = cur.fetchall()
                     subject_to_result_dict[iri] = ExposureValue(
@@ -54,7 +54,7 @@ def area_weighted_sum(calculation_input: CalculationInput):
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)
 
-    complete_message = 'Completed calculation for area weighted sum'
+    complete_message = 'Completed calculation for raster area'
     logger.info(complete_message)
 
     return complete_message
