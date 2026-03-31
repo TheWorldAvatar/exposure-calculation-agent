@@ -328,12 +328,36 @@ Calculation instance:
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
 ```
 
-Exposure dataset, needs to have the area and value columns specified, if geometry column is not specified, it will default to 'wkb_geometry'.
+Exposure dataset, needs to have the area column specified, if geometry column is not specified, it will default to 'rast'.
 
 ```ttl
 <http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
-    <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
+    <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "rast".
+```
+
+#### Raster area (`<https://www.theworldavatar.com/kg/ontoexposure/RasterArea>`)
+
+Overview: Calculates the area enclosed by the buffer. Dataset is expected to have a precalculated area column for each raster tile, as area calculation is not possible on pure raster datasets.
+
+Requirements:
+
+Subject: Any vector with a WKT literal associated via geo:asWKT, can be a list of IRI
+Exposure: A raster dataset with an area attached to each tile
+
+Calculation instance:
+
+```ttl
+<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/RasterArea>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 400.
+```
+
+Exposure dataset, needs to have the area column specified, if geometry column is not specified, it will default to 'rast'.
+
+```ttl
+<http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
+    <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
+    <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "rast".
 ```
 
 #### Trajectory area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`)
@@ -450,4 +474,4 @@ The following APIs are used to initialise the necessary instances and trigger th
     }
     ```
 
-    dataset_filter_values is optional.
+    dataset_filter_values is optional. A cross product between the provided distances and dataset filters is done to produce all the combination of parameters, then calculations are executed for each of the combinations.
