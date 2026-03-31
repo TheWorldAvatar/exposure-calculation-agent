@@ -29,6 +29,19 @@ csv_export_bp = Blueprint(
 
 @csv_export_bp.route('/non_trajectory', methods=['POST'])
 def non_trajectory():
+    # example input of JSON request body
+    # {
+    #     "exposure_table": "ndvi_raster",
+    #     "rdf_type": "https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum",
+    #     "dataset_filter_values": {
+    #         "year": [
+    #             2016
+    #         ]
+    #     },
+    #     // provide either subject_query_file or subject, not both
+    #     "subject_query_file": "subject_query.sparql",
+    #     "subject_label_query_file": "subject_label_query.sparql"
+    # }
     inputs = request.json
     # IRI(s) of subject to calculate
     subject = None

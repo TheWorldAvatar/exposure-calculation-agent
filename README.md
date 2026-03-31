@@ -197,7 +197,8 @@ Supported calculation types:
 3. `<https://www.theworldavatar.com/kg/ontoexposure/Count>`
 4. `<https://www.theworldavatar.com/kg/ontoexposure/Area>`
 5. `<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`
-6. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`
+6. `<https://www.theworldavatar.com/kg/ontoexposure/RasterArea>`
+7. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`
 
 Permissible metadata depends on the calculation type. A result instance is instantiated for each subject - exposure - calculation combination.
 
@@ -410,20 +411,32 @@ The following APIs are used to initialise the necessary instances and trigger th
     3) Then it queries the dataset IRI of the given `exposure_table`, because the core agent is designed to read in IRIs only.
     4) Finally sends a request to the core agent with the IRIs of subject, exposure, and calculation.
 
-2) /csv_export/ (GET)
+2) /csv_export/non_trajectory (POST)
 
-    Parameters:
-    - subject_query_file: SPARQL query template to obtain subject IRIs, bind mounted in the folder called `/app/queries`.
-    - subject: IRI of subject
-    - subject_label_query_file: SPARQL query template to get user facing label of subject, mandatory SELECT variables - ?Label, ?Feature, where ?Feature is the subject IRIs obtained via `subject_query_file`. A VALUES clause using IRIs from `subject_query_file` is inserted into this query, e.g. `VALUES ?Feature {<http://subject1> <http://subject2>}`
-    - rdf_type: RDF type of calculation
-    - exposure_table: table name of exposure dataset
+    No parameters, instead inputs to be provided in the request body as JSON, e.g.
 
-    Example usage:
-
-    ```bash
-    curl -o greenspace_2016_raster_area_02.csv 'http://localhost:3838/exposure-calculation-agent/generate_results/?subject_query_file=subject_query.sparql&subject_label_query_file=subject_label_query.sparql&rdf_type=https://www.theworldavatar.com/kg/ontoexposure/RasterArea&exposure_table=ndvi'
+   ```bash
+    curl -X POST "http://localhost:3838/exposure-calculation-agent/csv_export/non_trajectory" -H "Content-Type: application/json" -d @body.json
     ```
+
+    where the content of **body.json** is something like
+
+    ```json
+    {
+        "exposure_table": "ndvi_raster",
+        "rdf_type": "https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum",
+        "dataset_filter_values": {
+            "year": [
+                2016
+            ]
+        },
+        // provide either subject_query_file or subject, not both
+        "subject_query_file": "subject_query.sparql",
+        "subject_label_query_file": "subject_label_query.sparql"
+    }
+    ```
+
+    Response is a csv file.
 
 3) /csv_export/trajectory (GET)
 
@@ -474,4 +487,4 @@ The following APIs are used to initialise the necessary instances and trigger th
     }
     ```
 
-    dataset_filter_values is optional. A cross product between the provided distances and dataset filters is done to produce all the combination of parameters, then calculations are executed for each of the combinations.
+    dataset_filter_values is optional. A cross product between the provided distances and dataset filters is done to produce all combinations of parameters, then calculations are executed for each of the combinations.

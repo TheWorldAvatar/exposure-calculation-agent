@@ -26,6 +26,30 @@ def delete_time_series():
 
 @trigger_calculation_bp.route('/bulk', methods=['POST'])
 def bulk_trigger_calculation():
+    # example input of JSON request body
+    # {
+    #     "exposure_table": "ndvi_raster",
+    #     "rdf_types": [
+    #         "https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum"
+    #     ],
+    #     "distances": [
+    #         400,
+    #         800,
+    #         1000
+    #     ],
+    #     "dataset_filter_values": {
+    #         "year": [
+    #         2016
+    #         ]
+    #     },
+    #     // provide either subject_query_file or subject, not both
+    #     "subject_query_file": "subject_query.sparql",
+    #     "subject": "http://subject"
+    # }
+
+    # a cross product between distances and the provided dataset filters is done to find all parameter combinations,
+    # then a calculation is initiated for each of the combinations for each rdf_type provided
+
     from agent.utils.kg_client import kg_client
     inputs = request.json
     exposure_table = inputs['exposure_table']
