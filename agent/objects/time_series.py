@@ -33,3 +33,6 @@ class TimeSeries:
 
     def get_measures(self):
         return self.values.keys()
+
+    def get_timestamp(self, measure):
+        return self.timestamp[measure]

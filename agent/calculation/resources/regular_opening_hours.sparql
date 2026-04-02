@@ -1,0 +1,19 @@
+PREFIX fibo-fnd-fd: <https://spec.edmcouncil.org/fibo/ontology/FND/DatesAndTimes/FinancialDates/>
+PREFIX cmns-dt:      <https://www.omg.org/spec/Commons/DatesAndTimes/>
+
+SELECT *
+WHERE {{
+  {VALUES_CLAUSE}
+
+  ?{VARNAME}  fibo-fnd-fd:hasSchedule        ?schedule .
+
+  ?schedule a fibo-fnd-fd:RegularSchedule ;
+    fibo-fnd-fd:hasRecurrenceInterval              ?reccurent_day .
+
+  OPTIONAL {{?schedule cmns-dt:hasEndDate/cmns-dt:hasDateValue ?schedule_end_date ;
+    cmns-dt:hasStartDate/cmns-dt:hasDateValue      ?schedule_start_date .}}
+  
+  OPTIONAL {{?schedule cmns-dt:hasTimePeriod ?timeperiod .
+  ?timeperiod cmns-dt:hasEndTime/cmns-dt:hasTimeValue ?end_time ;
+   cmns-dt:hasStartTime/cmns-dt:hasTimeValue ?start_time .}}
+}}
