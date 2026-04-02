@@ -88,8 +88,13 @@ def trajectory(calculation_input: CalculationInput):
 
     # create temp table for efficiency
     temp_table = 'temp_table'
+    if exposure_dataset.geometry_column is not None:
+        geometry_column = exposure_dataset.geometry_column
+    else:
+        geometry_column = constants.VECTOR_GEOMETRY_COLUMN
+
     columns = ["""ST_Transform(ST_Transform({GEOMETRY_COLUMN}, 4326), '{PROJ4_TEXT}') AS wkb_geometry""".format(
-        GEOMETRY_COLUMN=exposure_dataset.geometry_column, PROJ4_TEXT=proj4text)]
+        GEOMETRY_COLUMN=geometry_column, PROJ4_TEXT=proj4text)]
 
     # different calculation types require different additional columns
     # area weighted sum requires area and associated value of each pixel
@@ -129,10 +134,12 @@ def trajectory(calculation_input: CalculationInput):
                                         for row in query_result}
                         trip.set_iri_wkt_dict(iri_wkt_dict)
                     else:
+                        # 1 trip is expected to have one row of result
                         if query_result[0]['exposure_result'] is None:
                             trip.set_exposure_result(0)
                         else:
-                            trip.set_exposure_result(query_result[0][0])
+                            trip.set_exposure_result(
+                                query_result[0]['exposure_result'])
 
     # check if an existing result time series exists
     result_iri = _get_exposure_result(calculation_input)
@@ -216,7 +223,7 @@ def _create_result_time_series(trips: list[Trip], result_iri: str, time_list, ts
 def _get_trip(point_iri: str):
     from agent.utils.kg_client import kg_client
     query = f"""
-    SELECT ?trip
+    SELECT DISTINCT ?trip
     WHERE {{
         <{point_iri}> <{constants.HAS_TIME_SERIES}> ?time_series.
         ?trip <{constants.HAS_TIME_SERIES}> ?time_series;
@@ -245,7 +252,12 @@ def _get_exposure_result(calculation_input: CalculationInput):
             <{constants.HAS_CALCULATION_METHOD}> <{calculation_input.calculation_metadata.iri}>.
     }}
     """
-    query_result = kg_client.remote_store_client.executeQuery(query)
+
+    try:
+        query_result = kg_client.remote_store_client.executeQuery(query)
+    except:
+        logger.warning('Federated query failed, trying direct ontop query')
+        query_result = kg_client.ontop_client.executeQuery(query)
 
     if query_result.isEmpty():
         logger.info(query)
