@@ -462,7 +462,7 @@ def _get_subject_to_point_dict(subject):
 def _get_trip(point_iri: str):
     from agent.utils.kg_client import kg_client
     query = f"""
-    SELECT ?trip
+    SELECT DISTINCT ?trip
     WHERE {{
         <{point_iri}> <{constants.HAS_TIME_SERIES}> ?time_series.
         ?trip <{constants.HAS_TIME_SERIES}> ?time_series;
