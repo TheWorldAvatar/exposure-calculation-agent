@@ -659,8 +659,9 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
                 iri=calculation_iri, rdf_type=rdf_type, dataset_filter=dataset_filter, distance=distance))
 
     if len(dataset_filters) == 0:
+        filter_not_exists = f"FILTER NOT EXISTS {{?calculation <{constants.HAS_DATASET_FILTER}> ?filter}}"
         query = query_template.format(rdf_type=rdf_type, has_distance=constants.HAS_DISTANCE,
-                                      dataset_filter_clauses='', blazegraph_url=BLAZEGRAPH_URL)
+                                      dataset_filter_clauses=filter_not_exists, blazegraph_url=BLAZEGRAPH_URL)
 
         query_results = json.loads(
             kg_client.remote_store_client.executeQuery(query).toString())
