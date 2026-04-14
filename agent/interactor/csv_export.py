@@ -109,7 +109,7 @@ def non_trajectory():
             else:
                 # this queries everything for this exposure + calculation combo
                 subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
-                    exposure=exposure_dataset_iri, calculation_iri=calculation.iri, conn=conn)
+                    exposure=exposure_dataset_iri, calculation_iri=calculation.iri, subject=subject, conn=conn)
 
             if not subject_to_result_dict:
                 continue
@@ -310,8 +310,7 @@ def _get_subject_to_result_dict_calc_iri_sql(exposure=None, calculation_iri=None
     }
 
     if subject is not None:
-        query += " AND subject = %(SUBJECT_PLACEHOLDER)s"
-
+        query += " AND subject = ANY(%(SUBJECT_PLACEHOLDER)s)"
         replacements['SUBJECT_PLACEHOLDER'] = subject
 
     subject_to_result_dict = {}
