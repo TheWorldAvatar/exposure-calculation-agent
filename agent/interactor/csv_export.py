@@ -102,14 +102,8 @@ def non_trajectory():
         for calculation in calculation_metadata_list:
             logger.info(f"Querying results for <{calculation.iri}>")
 
-            if len(subject) == 1:
-                # restrict result to a specified subject if it is provided
-                subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
-                    exposure=exposure_dataset_iri, calculation_iri=calculation.iri, subject=subject[0], conn=conn)
-            else:
-                # this queries everything for this exposure + calculation combo
-                subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
-                    exposure=exposure_dataset_iri, calculation_iri=calculation.iri, conn=conn)
+            subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
+                exposure=exposure_dataset_iri, calculation_iri=calculation.iri, subject=subject, conn=conn)
 
             if not subject_to_result_dict:
                 continue
@@ -310,8 +304,7 @@ def _get_subject_to_result_dict_calc_iri_sql(exposure=None, calculation_iri=None
     }
 
     if subject is not None:
-        query += " AND subject = %(SUBJECT_PLACEHOLDER)s"
-
+        query += " AND subject = ANY(%(SUBJECT_PLACEHOLDER)s)"
         replacements['SUBJECT_PLACEHOLDER'] = subject
 
     subject_to_result_dict = {}
@@ -659,8 +652,9 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
                 iri=calculation_iri, rdf_type=rdf_type, dataset_filter=dataset_filter, distance=distance))
 
     if len(dataset_filters) == 0:
+        filter_not_exists = f"FILTER NOT EXISTS {{?calculation <{constants.HAS_DATASET_FILTER}> ?filter}}"
         query = query_template.format(rdf_type=rdf_type, has_distance=constants.HAS_DISTANCE,
-                                      dataset_filter_clauses='', blazegraph_url=BLAZEGRAPH_URL)
+                                      dataset_filter_clauses=filter_not_exists, blazegraph_url=BLAZEGRAPH_URL)
 
         query_results = json.loads(
             kg_client.remote_store_client.executeQuery(query).toString())

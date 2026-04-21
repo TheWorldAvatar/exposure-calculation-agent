@@ -99,6 +99,9 @@ class CalculationMetadata():
         if self.dataset_filter:
             where_clauses.extend(get_dataset_filter_where_clauses(
                 calc_var=var, dataset_filter=self.dataset_filter))
+        else:
+            where_clauses.append(
+                f"FILTER NOT EXISTS{{?{var} <{constants.HAS_DATASET_FILTER}> ?filter.}}")
 
         return "\n".join(where_clauses)
 

@@ -3,6 +3,7 @@ from twa import agentlogging
 from agent.calculation.area_weighted_sum import area_weighted_sum
 from agent.calculation.raster_area import raster_area
 from agent.calculation.raster_count import raster_count
+from agent.calculation.raster_sum import raster_sum
 from agent.calculation.simple_area import simple_area
 from agent.calculation.trajectory import trajectory
 from agent.calculation.simple_count import simple_count
@@ -20,7 +21,8 @@ function_map = {
     constants.AREA_WEIGHTED_SUM: area_weighted_sum,
     constants.SIMPLE_AREA: simple_area,
     constants.RASTER_COUNT: raster_count,
-    constants.RASTER_AREA: raster_area
+    constants.RASTER_AREA: raster_area,
+    constants.RASTER_SUM: raster_sum
 }
 
 CALCULATE_ROUTE = '/calculate_exposure'

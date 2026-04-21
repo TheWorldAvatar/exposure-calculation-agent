@@ -14,6 +14,9 @@ from pathlib import Path
 from agent.utils.constants import METRE_SQUARED, EXPOSURE_RESULT
 import json
 import time
+import statistics
+from scipy import stats
+import pandas as pd
 
 logger = agentlogging.get_logger('dev')
 
@@ -37,6 +40,10 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
                 calculation TEXT,
                 value double precision,
                 unit TEXT,
+                mean double precision,
+                stddev double precision,
+                z_score double precision,
+                percentile double_precision,
                 CONSTRAINT exposure_result_constraint UNIQUE (subject, exposure, calculation)
             );
             """
@@ -46,16 +53,27 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
 
             if calculation_input.calculation_metadata.rdf_type not in constants.TRAJECTORY_TYPES:
                 insert_query = """
-                    INSERT INTO exposure_result (subject, exposure, calculation, value, unit)
+                    INSERT INTO exposure_result (subject, exposure, calculation, value, unit, z_score, percentile, mean, sddev)
                     VALUES %s
                     ON CONFLICT (subject, exposure, calculation)
                     DO UPDATE SET value = EXCLUDED.value,
-                                  unit = EXCLUDED.unit
+                                  unit = EXCLUDED.unit,
+                                  z_score = EXCLUDED.z_score,
+                                  percentile = EXCLUDED.percentile,
+                                  mean = EXCLUDED.mean,
+                                  sddev = EXCLUDED.sddev
                 """
+                values = [v.value for v in subject_to_value_dict.values()]
+                mean = statistics.mean(values)
+                sddev = statistics.stdev(values)
+
+                subject_to_z_score = _get_z_score(
+                    subject_to_result_dict=subject_to_value_dict, mean=mean, sddev=sddev)
+                subject_to_percentile = _get_percentile(subject_to_value_dict)
 
                 for subject, value in subject_to_value_dict.items():
                     data.append((subject, calculation_input.exposure,
-                                calculation_input.calculation_metadata.iri, value.value, value.unit))
+                                calculation_input.calculation_metadata.iri, value.value, value.unit, subject_to_z_score[subject], subject_to_percentile[subject], mean, sddev))
             else:
                 # trajectory case, only one subject
                 data = [(calculation_input.subject, calculation_input.exposure,
@@ -202,6 +220,29 @@ def get_iri_to_buffer_dict(subject, distance: float):
                 transformer_back.transform, buffered_geom)
 
     return iri_to_buffer_dict
+
+
+def _get_z_score(subject_to_result_dict: dict, mean, sddev):
+    subject_to_z_score = {}
+
+    for subject in subject_to_result_dict:
+        subject_to_z_score[subject] = (
+            subject_to_result_dict[subject].value - mean) / sddev
+
+    return subject_to_z_score
+
+
+def _get_percentile(subject_to_result_dict: dict):
+    # extract numerical value out of ExposureValue
+    subject_to_value_dict = {}
+    for subject in subject_to_result_dict:
+        subject_to_value_dict[subject] = subject_to_result_dict[subject].value
+
+    dataframe = pd.Series(subject_to_value_dict)
+
+    percentiles = dataframe.rank(method="max", pct=True) * 100
+
+    return percentiles.to_dict()
 
 
 def _chunk_list(values, chunk_size=10000):
