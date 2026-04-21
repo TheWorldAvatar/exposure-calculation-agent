@@ -102,14 +102,8 @@ def non_trajectory():
         for calculation in calculation_metadata_list:
             logger.info(f"Querying results for <{calculation.iri}>")
 
-            if len(subject) == 1:
-                # restrict result to a specified subject if it is provided
-                subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
-                    exposure=exposure_dataset_iri, calculation_iri=calculation.iri, subject=subject[0], conn=conn)
-            else:
-                # this queries everything for this exposure + calculation combo
-                subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
-                    exposure=exposure_dataset_iri, calculation_iri=calculation.iri, subject=subject, conn=conn)
+            subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
+                exposure=exposure_dataset_iri, calculation_iri=calculation.iri, subject=subject, conn=conn)
 
             if not subject_to_result_dict:
                 continue
