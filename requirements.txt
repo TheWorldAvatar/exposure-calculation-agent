@@ -7,3 +7,5 @@ rdflib
 tqdm
 shapely
 pyproj
+scipy
+pandas

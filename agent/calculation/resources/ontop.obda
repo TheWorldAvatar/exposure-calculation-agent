@@ -11,6 +11,8 @@ target      derivation:{id} a derivation:Derivation;
                 exposure:hasCalculationMethod <{calculation}>;
                 derivation:belongsTo derivation:{id};
                 exposure:hasValue {value};
+                exposure:hasPercentile {percentile};
                 exposure:hasUnit {unit}.
-source      SELECT id, subject, exposure, calculation, value, unit FROM exposure_result
+            exposure:percentile/{id} a exposure:ExposurePercentile
+source      SELECT id, subject, exposure, calculation, value, unit, percentile FROM exposure_result
 ]]
