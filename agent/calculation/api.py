@@ -1,10 +1,12 @@
 from flask import Blueprint, request
 from twa import agentlogging
 from agent.calculation.area_weighted_sum import area_weighted_sum
+from agent.calculation.closest_distance import closest_distance
 from agent.calculation.raster_area import raster_area
 from agent.calculation.raster_count import raster_count
 from agent.calculation.raster_sum import raster_sum
 from agent.calculation.simple_area import simple_area
+from agent.calculation.total_length import total_length
 from agent.calculation.trajectory import trajectory
 from agent.calculation.simple_count import simple_count
 from agent.objects.calculation_metadata import get_calculation_metadata
@@ -22,7 +24,9 @@ function_map = {
     constants.SIMPLE_AREA: simple_area,
     constants.RASTER_COUNT: raster_count,
     constants.RASTER_AREA: raster_area,
-    constants.RASTER_SUM: raster_sum
+    constants.RASTER_SUM: raster_sum,
+    constants.CLOSEST_DISTANCE: closest_distance,
+    constants.TOTAL_LENGTH: total_length
 }
 
 CALCULATE_ROUTE = '/calculate_exposure'
