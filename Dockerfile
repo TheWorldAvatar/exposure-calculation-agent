@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Set the default shell
 RUN apt update &&\
-    apt install -y openjdk-21-jre-headless git &&\
+    apt install -y openjdk-21-jre-headless git procps vim-tiny &&\
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Set the default working directory, then copy the Python source code into it
