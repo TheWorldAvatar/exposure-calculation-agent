@@ -43,7 +43,7 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
                 mean double precision,
                 stddev double precision,
                 z_score double precision,
-                percentile double_precision,
+                percentile double precision,
                 CONSTRAINT exposure_result_constraint UNIQUE (subject, exposure, calculation)
             );
             """
