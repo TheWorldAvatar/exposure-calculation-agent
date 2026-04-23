@@ -185,10 +185,13 @@ def _process_trip(trip_index_array, points: list[Point], timestamp_list):
     lowerbound_index = 0  # position in the trajectory array
 
     # records a new trip every time the trip index changes
+    # NB We are adding *all* trips, i.e. even ones with index zero, which
+    # are not actual trips. Otherwise, it would cause a mismatch with the
+    # number of points in the time series.
     for i in range(1, len(trip_index_array)):
         if trip_index_array[i] != current_trip_index:
             upperbound_index = i - 1
-
+            logger.info(f"Trip {current_trip_index}: {lowerbound_index}-{upperbound_index}")
             trips.append(
                 Trip(upper_index=upperbound_index,
                      lower_index=lowerbound_index,
@@ -199,7 +202,7 @@ def _process_trip(trip_index_array, points: list[Point], timestamp_list):
             current_trip_index = trip_index_array[i]
         elif i == len(trip_index_array) - 1:
             upperbound_index = i
-
+            logger.info(f"Trip {current_trip_index}: {lowerbound_index}-{upperbound_index}")
             trips.append(Trip(upper_index=upperbound_index,
                               lower_index=lowerbound_index,
                          full_points_list=points,
