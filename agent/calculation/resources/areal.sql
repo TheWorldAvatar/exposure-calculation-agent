@@ -1,0 +1,6 @@
+SELECT "{AREAL_COLUMN_NAME}"
+FROM {TEMP_TABLE}
+WHERE ST_Intersects(
+    ST_GeomFromText(%(GEOMETRY_PLACEHOLDER)s, 3857),
+    {TEMP_TABLE}.wkb_geometry
+);

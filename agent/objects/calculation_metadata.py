@@ -11,13 +11,14 @@ class CalculationMetadataException(Exception):
 
 
 class CalculationMetadata():
-    def __init__(self, rdf_type, distance: float = None, upperbound=None, lowerbound=None, iri=None, dataset_filter: dict = {}):
+    def __init__(self, rdf_type, distance: float = None, upperbound=None, lowerbound=None, iri=None, dataset_filter: dict = {}, areal_column_name=None):
         self.rdf_type = rdf_type
         self.distance = distance
         self.upperbound = upperbound
         self.lowerbound = lowerbound
         self.iri = iri
         self.dataset_filter = dataset_filter
+        self.areal_column_name = areal_column_name  # for areal calculation only
 
     def get_query(self, var: str) -> str:
         query = f"""
@@ -65,6 +66,10 @@ class CalculationMetadata():
                 insert_triples.append(
                     f"<{dataset_filter_iri}> <{constants.HAS_FILTER_VALUE}> {format_rdf_literal(value)}.")
 
+        if self.areal_column_name:
+            insert_triples.append(
+                f"<{calculation_iri}> <{constants.HAS_AREAL_COLUMN_NAME}> \"{self.areal_column_name}\".")
+
         query = f"""
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
@@ -109,6 +114,13 @@ class CalculationMetadata():
             where_clauses.append(
                 f"FILTER NOT EXISTS{{?{var} <{constants.HAS_DATASET_FILTER}> ?filter.}}")
 
+        if self.areal_column_name is not None:
+            where_clauses.append(
+                f"?{var} <{constants.HAS_AREAL_COLUMN_NAME}> \"{self.areal_column_name}\".")
+        else:
+            where_clauses.append(
+                f"FILTER NOT EXISTS{{?{var} <{constants.HAS_AREAL_COLUMN_NAME}> ?column_name.}}")
+
         return "\n".join(where_clauses)
 
 
@@ -148,13 +160,14 @@ def get_dataset_filter_where_clauses(calc_var: str, dataset_filter: dict):
 def get_calculation_metadata(iri: str) -> CalculationMetadata:
     from agent.utils.kg_client import kg_client
     query = f"""
-    SELECT DISTINCT ?rdf_type ?distance ?upperbound ?lowerbound ?filter_column ?filter_value
+    SELECT DISTINCT ?rdf_type ?distance ?upperbound ?lowerbound ?filter_column ?filter_value ?column_name
     WHERE
     {{
         <{iri}> a ?rdf_type.
         OPTIONAL{{<{iri}> <{constants.HAS_DISTANCE}> ?distance.}}
         OPTIONAL{{<{iri}> <{constants.HAS_UPPERBOUND}> ?upperbound.}}
         OPTIONAL{{<{iri}> <{constants.HAS_LOWERBOUND}> ?lowerbound.}}
+        OPTIONAL{{<{iri}> <{constants.HAS_AREAL_COLUMN_NAME}> ?column_name.}}
         OPTIONAL{{<{iri}> <{constants.HAS_DATASET_FILTER}> ?dataset_filter.
             ?dataset_filter <{constants.HAS_FILTER_COLUMN}> ?filter_column;
             <{constants.HAS_FILTER_VALUE}> ?filter_value.}}
@@ -168,6 +181,7 @@ def get_calculation_metadata(iri: str) -> CalculationMetadata:
     distance = None
     upperbound = None
     lowerbound = None
+    areal_column_name = None
     dataset_filter = {}
     for row in query_results:
         if rdf_type is not None and rdf_type != row['rdf_type']:
@@ -191,11 +205,14 @@ def get_calculation_metadata(iri: str) -> CalculationMetadata:
             else:
                 lowerbound = row['lowerbound']
 
+        if 'column_name' in row:
+            areal_column_name = row['column_name']
+
         if 'filter_column' in row:
             dataset_filter[row['filter_column']
                            ] = parse_value(row['filter_value'])
 
-    return CalculationMetadata(rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, iri=iri, dataset_filter=dataset_filter)
+    return CalculationMetadata(rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, iri=iri, dataset_filter=dataset_filter, areal_column_name=areal_column_name)
 
 
 def is_integer(s: str) -> bool:
