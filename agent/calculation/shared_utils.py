@@ -63,7 +63,8 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
             data = []
 
             if calculation_input.calculation_metadata.rdf_type not in constants.TRAJECTORY_TYPES:
-                values = [v.value for v in subject_to_value_dict.values()]
+                values = [v.value for v in subject_to_value_dict.values()
+                          if v.value is not None]
                 mean = statistics.mean(values)
                 sddev = statistics.stdev(values)
 
@@ -240,8 +241,11 @@ def _get_z_score(subject_to_result_dict: dict, mean, sddev):
     subject_to_z_score = {}
 
     for subject in subject_to_result_dict:
-        subject_to_z_score[subject] = (
-            subject_to_result_dict[subject].value - mean) / sddev
+        if subject_to_result_dict[subject].value is not None:
+            subject_to_z_score[subject] = (
+                subject_to_result_dict[subject].value - mean) / sddev
+        else:
+            subject_to_z_score[subject] = None
 
     return subject_to_z_score
 
@@ -249,14 +253,23 @@ def _get_z_score(subject_to_result_dict: dict, mean, sddev):
 def _get_percentile(subject_to_result_dict: dict):
     # extract numerical value out of ExposureValue
     subject_to_value_dict = {}
+    subjects_with_none = []
     for subject in subject_to_result_dict:
-        subject_to_value_dict[subject] = subject_to_result_dict[subject].value
+        if subject_to_result_dict[subject].value is None:
+            subjects_with_none.append(subject)
+        else:
+            subject_to_value_dict[subject] = subject_to_result_dict[subject].value
 
     dataframe = pd.Series(subject_to_value_dict)
 
     percentiles = dataframe.rank(method="max", pct=True) * 100
 
-    return percentiles.to_dict()
+    percentile_dict = percentiles.to_dict()
+
+    for subject in subjects_with_none:
+        percentile_dict[subject] = None
+
+    return percentile_dict
 
 
 def _instantiate_result_set(calculation_input: CalculationInput, subject_to_value_dict: dict, mean: float, sddev: float, conn):
