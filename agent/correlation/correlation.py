@@ -3,6 +3,8 @@ from twa import agentlogging
 from psycopg2.extras import RealDictCursor, execute_values
 from scipy.stats import spearmanr
 from itertools import combinations
+from tqdm import tqdm
+import sys
 
 logger = agentlogging.get_logger('dev')
 
@@ -13,13 +15,9 @@ def calculate_correlation():
 
         set_ids = _get_set_ids(conn)
         pairs = list(combinations(set_ids, 2))
-
-        for pair in pairs:
+        for pair in tqdm(pairs, mininterval=60, ncols=80, file=sys.stdout):
             set_id1 = pair[0]
             set_id2 = pair[1]
-
-            logger.info(
-                f"Calculating correlation for exposure result sets ({set_id1}, {set_id2})")
 
             subject_to_value_dict1 = _get_subject_to_value(set_id1, conn)
             subject_to_value_dict2 = _get_subject_to_value(set_id2, conn)
@@ -30,10 +28,16 @@ def calculate_correlation():
             if subjects1 != subjects2:
                 raise Exception('Result sets must share the same subjects')
 
+            # remove null values
+            for subject in subjects1:
+                if subject_to_value_dict1[subject] is None or subject_to_value_dict2[subject] is None:
+                    del subject_to_value_dict1[subject]
+                    del subject_to_value_dict2[subject]
+
             value_list1 = []
             value_list2 = []
 
-            for subject in subjects2:
+            for subject in subject_to_value_dict1:
                 value_list1.append(subject_to_value_dict1[subject])
                 value_list2.append(subject_to_value_dict2[subject])
 
