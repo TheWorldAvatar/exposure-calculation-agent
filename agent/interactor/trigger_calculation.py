@@ -54,7 +54,10 @@ def bulk_trigger_calculation():
     inputs = request.json
     exposure_table = inputs['exposure_table']
     rdf_types = inputs['rdf_types']
-    distances = inputs['distances']
+    if 'distances' in inputs:
+        distances = inputs['distances']
+    else:
+        distances = [None]
 
     upperbound = None
     if 'upperbound' in inputs:

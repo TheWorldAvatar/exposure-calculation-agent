@@ -110,7 +110,10 @@ def non_trajectory():
 
             # prepare keys for overall result dict
             result_keys = []
-            result_keys.append(round(calculation.distance))
+            if calculation.distance is None:
+                result_keys.append(0)
+            else:
+                result_keys.append(round(calculation.distance))
 
             for filter_column in filter_columns:
                 if isinstance(calculation.dataset_filter[filter_column], bool):
@@ -620,8 +623,8 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
     SELECT ?calculation ?distance
     WHERE {{
         SERVICE<{blazegraph_url}> {{
-            ?calculation a <{rdf_type}>;
-                <{has_distance}> ?distance.
+            ?calculation a <{rdf_type}>.
+            OPTIONAL{{?calculation <{has_distance}> ?distance.}}
             {dataset_filter_clauses}
         }}
     }}
@@ -645,7 +648,10 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
             continue
 
         for row in query_results:
-            calc_to_distance[row['calculation']] = float(row['distance'])
+            if 'distance' in row:
+                calc_to_distance[row['calculation']] = float(row['distance'])
+            else:
+                calc_to_distance[row['calculation']] = None
 
         for calculation_iri, distance in calc_to_distance.items():
             calculations.append(CalculationMetadata(
@@ -667,7 +673,10 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
             return
 
         for row in query_results:
-            calc_to_distance[row['calculation']] = float(row['distance'])
+            if 'distance' in row:
+                calc_to_distance[row['calculation']] = float(row['distance'])
+            else:
+                calc_to_distance[row['calculation']] = None
 
         for calculation_iri, distance in calc_to_distance.items():
             calculations.append(CalculationMetadata(

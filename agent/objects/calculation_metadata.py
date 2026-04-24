@@ -11,7 +11,7 @@ class CalculationMetadataException(Exception):
 
 
 class CalculationMetadata():
-    def __init__(self, rdf_type, distance: float, upperbound=None, lowerbound=None, iri=None, dataset_filter: dict = {}):
+    def __init__(self, rdf_type, distance: float = None, upperbound=None, lowerbound=None, iri=None, dataset_filter: dict = {}):
         self.rdf_type = rdf_type
         self.distance = distance
         self.upperbound = upperbound
@@ -34,8 +34,9 @@ class CalculationMetadata():
 
     def get_insert_query(self, calculation_iri: str) -> str:
         insert_triples = [f"<{calculation_iri}> a <{self.rdf_type}>."]
-        insert_triples.append(
-            f"<{calculation_iri}> <{constants.HAS_DISTANCE}> {self.distance}.")
+        if self.distance is not None:
+            insert_triples.append(
+                f"<{calculation_iri}> <{constants.HAS_DISTANCE}> {self.distance}.")
 
         if self.upperbound is not None and is_integer(self.upperbound):
             insert_triples.append(
@@ -74,7 +75,12 @@ class CalculationMetadata():
         return query
 
     def __get_where_clauses(self, var: str) -> str:
-        where_clauses = [f"?{var} <{constants.HAS_DISTANCE}> {self.distance}."]
+        if self.distance is not None:
+            where_clauses = [
+                f"?{var} <{constants.HAS_DISTANCE}> {self.distance}."]
+        else:
+            where_clauses = [
+                f"FILTER NOT EXISTS{{?{var} <{constants.HAS_DISTANCE}> ?distance}}."]
 
         if self.upperbound is not None and is_integer(self.upperbound):
             where_clauses.append(
@@ -170,7 +176,8 @@ def get_calculation_metadata(iri: str) -> CalculationMetadata:
 
         if distance is not None and distance != float(row['distance']):
             raise Exception('unexpected distance value')
-        distance = float(row['distance'])
+        if 'distance' in row:
+            distance = float(row['distance'])
 
         if 'upperbound' in row:
             if upperbound is not None and upperbound != row['upperbound']:
