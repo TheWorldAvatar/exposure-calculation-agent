@@ -8,6 +8,7 @@ from datetime import date
 
 @dataclass
 class ExposureDataset:
+    iri: str
     table_name: str
     url: str
     geometry_column: str = None
@@ -18,6 +19,12 @@ class ExposureDataset:
     # used to determine if this feature exists
     start_date: date = None
     end_date: date = None
+
+    def __eq__(self, other):
+        return isinstance(other, ExposureDataset) and self.iri == other.iri
+
+    def __hash__(self):
+        return hash(self.iri)
 
 
 def get_exposure_dataset(dataset_iri):
@@ -60,7 +67,8 @@ def get_exposure_dataset(dataset_iri):
     if STACK_NAME not in url:
         raise Exception('Dataset must be located within the same stack')
 
-    exposure_dataset = ExposureDataset(url=url, table_name=table_name)
+    exposure_dataset = ExposureDataset(
+        url=url, table_name=table_name, iri=dataset_iri)
 
     if 'geometry_column' in query_result[0]:
         exposure_dataset.geometry_column = query_result[0]['geometry_column']
