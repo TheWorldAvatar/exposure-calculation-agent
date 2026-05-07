@@ -20,6 +20,10 @@ class CalculationMetadata():
         self.dataset_filter = dataset_filter
         self.areal_column_name = areal_column_name  # for areal calculation only
 
+    def get_string(self) -> str:
+        name = self.rdf_type.rstrip("/").split("/")[-1]
+        return f"{name}, distance={self.distance}, column={self.areal_column_name}, filter={self.dataset_filter}."
+
     def get_query(self, var: str) -> str:
         query = f"""
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -122,6 +126,12 @@ class CalculationMetadata():
                 f"FILTER NOT EXISTS{{?{var} <{constants.HAS_AREAL_COLUMN_NAME}> ?column_name.}}")
 
         return "\n".join(where_clauses)
+
+    def __eq__(self, other):
+        return isinstance(other, CalculationMetadata) and self.iri == other.iri
+
+    def __hash__(self):
+        return hash(self.iri)
 
 
 def get_dataset_filter_where_clauses(calc_var: str, dataset_filter: dict):

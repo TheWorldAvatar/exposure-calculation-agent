@@ -56,6 +56,11 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
                 CONSTRAINT exposure_result_constraint UNIQUE (subject, exposure, calculation)
             );
 
+            ALTER TABLE exposure_result
+            ADD COLUMN IF NOT EXISTS z_score double precision,
+            ADD COLUMN IF NOT EXISTS percentile double precision,
+            ADD COLUMN IF NOT EXISTS set_id INT REFERENCES exposure_result_set(id) ON DELETE CASCADE;
+
             CREATE INDEX IF NOT EXISTS exposure_result_set_id_idx ON exposure_result(set_id);
             """
             cur.execute(create_table)

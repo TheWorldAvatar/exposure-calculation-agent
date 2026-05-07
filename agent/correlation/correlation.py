@@ -98,7 +98,6 @@ def _create_table(conn):
 
 
 def _update_table(set_id1, set_id2, correlation_value, conn):
-    x = 1
     query = """
         INSERT INTO exposure_correlation (set_id1, set_id2, value)
         VALUES %s
