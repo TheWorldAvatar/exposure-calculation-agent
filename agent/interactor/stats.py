@@ -5,30 +5,31 @@ from shapely import Point
 from twa import agentlogging
 from shapely.ops import transform
 from pyproj import Transformer
-from agent.correlation.correlation import calculate_correlation
-from agent.correlation.post_process import post_process_correlation
+from agent.stats.correlation import calculate_correlation
+from agent.stats.post_process import post_process_correlation
 from agent.utils.postgis_client import postgis_client
 from psycopg2.extras import RealDictCursor
 
 logger = agentlogging.get_logger('dev')
 
 correlation_blueprint = Blueprint(
-    'correlation', __name__, url_prefix='/correlation')
+    'stats', __name__, url_prefix='/stats')
 
 
-@correlation_blueprint.route('/', methods=['POST'])
+@correlation_blueprint.route('/correlation', methods=['POST'])
 def calculate():
     calculate_correlation()
     return 'calculated correlation'
 
 
-@correlation_blueprint.route('/post_process', methods=['POST'])
-def post_process():
+@correlation_blueprint.route('/post_process_correlation', methods=['POST'])
+def post_process_correlation():
     return post_process_correlation()
 
 
 @correlation_blueprint.route('/check_punggol', methods=['GET'])
 def check_punggol():
+    # adhoc code that will be removed
     transformer = Transformer.from_crs(
         "EPSG:4326", "EPSG:3857", always_xy=True)
 
