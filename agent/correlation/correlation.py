@@ -26,7 +26,9 @@ def calculate_correlation():
             subjects2 = set(subject_to_value_dict2.keys())
 
             if subjects1 != subjects2:
-                raise Exception('Result sets must share the same subjects')
+                logger.warning(
+                    f"Skipping ({set_id1}, {set_id2}) because they don't share the same subjects")
+                continue
 
             # remove null values
             for subject in subjects1:

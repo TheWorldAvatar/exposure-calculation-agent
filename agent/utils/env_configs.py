@@ -2,7 +2,7 @@ import os
 
 
 def retrieve_default_settings():
-    global NAMESPACE, DATABASE, STACK_NAME
+    global NAMESPACE, DATABASE, STACK_NAME, VIS_DATA_JSON
 
     NAMESPACE = os.getenv("NAMESPACE")
     if NAMESPACE is None:
@@ -14,6 +14,7 @@ def retrieve_default_settings():
 
     STACK_NAME = os.getenv('STACK_NAME')
 
+    VIS_DATA_JSON = os.getenv('VIS_DATA_JSON')
 
 # run when module is imported
 retrieve_default_settings()

@@ -9,7 +9,7 @@ class ExposureResultSet:
     exposure_dataset: ExposureDataset
 
     def __eq__(self, other):
-        return isinstance(other, ExposureResultSet) and self.calculation == other.calculation and self.exposure == other.exposure
+        return isinstance(other, ExposureResultSet) and self.calculation_metadata == other.calculation_metadata and self.exposure_dataset == other.exposure_dataset
 
     def __hash__(self):
         return hash((self.calculation_metadata.iri, self.exposure_dataset.iri))
