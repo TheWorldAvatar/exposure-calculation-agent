@@ -98,31 +98,8 @@ def bulk_trigger_calculation():
 
     # do SPARQL query to obtain a list of subject IRIs
     if subject_query_file is not None:
-        with open(Path(constants.BIND_MOUNT_PATH)/subject_query_file, "r") as f:
-            query = f.read()
-
-        parsed = parseQuery(query)
-
-        if len(parsed[1]['projection']) != 1:
-            raise Exception(
-                'Provided query needs to have exactly one select variable')
-
-        select_var = str(parsed[1]['projection'][0]['var'])
-
-        logger.info(
-            'Querying subject IRIs with provided SPARQL query template')
-        query_result = json.loads(
-            kg_client.remote_store_client.executeQuery(query).toString())
-
-        logger.info('Received ' + str(len(query_result)) + ' IRIs')
-
-        if len(query_result) == 0:
-            logger.warning('There are no subject IRIs')
-            return
-
-        subject_list = []
-        for i in query_result:
-            subject_list.append(i[select_var])
+        subject_list = kg_client.get_subjects_via_file(
+            subject_query_file=subject_query_file)
 
     # get dataset iri to pass the core calculation agent
     exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
@@ -178,31 +155,8 @@ def trigger_calculation():
 
     # do SPARQL query to obtain a list of subject IRIs
     if subject_query_file is not None:
-        with open(Path(constants.BIND_MOUNT_PATH)/subject_query_file, "r") as f:
-            query = f.read()
-
-        parsed = parseQuery(query)
-
-        if len(parsed[1]['projection']) != 1:
-            raise Exception(
-                'Provided query needs to have exactly one select variable')
-
-        select_var = str(parsed[1]['projection'][0]['var'])
-
-        logger.info(
-            'Querying subject IRIs with provided SPARQL query template')
-        query_result = json.loads(
-            kg_client.remote_store_client.executeQuery(query).toString())
-
-        logger.info('Received ' + str(len(query_result)) + ' IRIs')
-
-        if len(query_result) == 0:
-            logger.warning('There are no subject IRIs')
-            return
-
-        subject_list = []
-        for i in query_result:
-            subject_list.append(i[select_var])
+        subject_list = kg_client.get_subjects_via_file(
+            subject_query_file=subject_query_file)
 
     # get dataset iri to pass the core calculation agent
     exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
