@@ -12,22 +12,21 @@ from psycopg2.extras import RealDictCursor
 
 logger = agentlogging.get_logger('dev')
 
-correlation_blueprint = Blueprint(
-    'stats', __name__, url_prefix='/stats')
+stats_blueprint = Blueprint('stats', __name__, url_prefix='/stats')
 
 
-@correlation_blueprint.route('/correlation', methods=['POST'])
+@stats_blueprint.route('/correlation', methods=['POST'])
 def calculate():
     calculate_correlation()
     return 'calculated correlation'
 
 
-@correlation_blueprint.route('/post_process_correlation', methods=['POST'])
+@stats_blueprint.route('/post_process_correlation', methods=['POST'])
 def post_process_correlation():
     return post_process_correlation()
 
 
-@correlation_blueprint.route('/check_punggol', methods=['GET'])
+@stats_blueprint.route('/check_punggol', methods=['GET'])
 def check_punggol():
     # adhoc code that will be removed
     transformer = Transformer.from_crs(
