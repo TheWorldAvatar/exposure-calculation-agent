@@ -9,13 +9,18 @@ import sys
 logger = agentlogging.get_logger('dev')
 
 
-def calculate_correlation():
+def calculate_correlation(dataset_iri_list: list):
     with postgis_client.connect() as conn:
         _create_table(conn)
 
-        set_ids = _get_set_ids(conn)
+        set_id_to_exposure = _get_set_id_to_exposure(conn)
+        set_ids = set_id_to_exposure.keys()
         pairs = list(combinations(set_ids, 2))
         for pair in tqdm(pairs, mininterval=60, ncols=80, file=sys.stdout):
+            # only run calculations for given tables
+            if dataset_iri_list and (set_id_to_exposure[pair[0]] not in dataset_iri_list and set_id_to_exposure[pair[1]] not in dataset_iri_list):
+                continue
+
             set_id1 = pair[0]
             set_id2 = pair[1]
 
@@ -49,18 +54,20 @@ def calculate_correlation():
                           correlation_value=correlation_value, conn=conn)
 
 
-def _get_set_ids(conn):
+def _get_set_id_to_exposure(conn):
     query = """
-    SELECT id from exposure_result_set
+    SELECT id, exposure from exposure_result_set
     """
-    set_ids = []
+    id_to_exposure = {}
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(query)
         if cur.description:
             query_result = cur.fetchall()
             for row in query_result:
-                set_ids.append(row['id'])
-    return set_ids
+                set_id = row['id']
+                exposure = row['exposure']
+                id_to_exposure[set_id] = exposure
+    return id_to_exposure
 
 
 def _get_subject_to_value(set_id: int, conn):

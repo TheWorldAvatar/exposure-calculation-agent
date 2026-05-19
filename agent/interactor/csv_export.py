@@ -102,7 +102,7 @@ def non_trajectory():
         for calculation in calculation_metadata_list:
             logger.info(f"Querying results for <{calculation.iri}>")
 
-            subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
+            subject_to_result_dict, _ = _get_subject_to_result_dict_calc_iri_sql(
                 exposure=exposure_dataset_iri, calculation_iri=calculation.iri, subject=subject, conn=conn)
 
             if not subject_to_result_dict:
@@ -300,7 +300,7 @@ def _get_subject_to_result_dict_calc_iri(subject, exposure, calculation_iri):
 
 def _get_subject_to_result_dict_calc_iri_sql(exposure=None, calculation_iri=None, subject=None, conn=None):
     query = f"""
-    SELECT subject, value
+    SELECT subject, value, percentile
     FROM exposure_result e
     WHERE exposure = %(EXPOSURE_PLACEHOLDER)s
     AND calculation = %(CALCULATION_PLACEHOLDER)s
@@ -316,6 +316,7 @@ def _get_subject_to_result_dict_calc_iri_sql(exposure=None, calculation_iri=None
         replacements['SUBJECT_PLACEHOLDER'] = subject
 
     subject_to_result_dict = {}
+    subject_to_percentile_dict = {}
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(query, replacements)
 
@@ -323,8 +324,9 @@ def _get_subject_to_result_dict_calc_iri_sql(exposure=None, calculation_iri=None
             query_result = cur.fetchall()
             for row in query_result:
                 subject_to_result_dict[row['subject']] = row['value']
+                subject_to_percentile_dict[row['subject']] = row['percentile']
 
-    return subject_to_result_dict
+    return subject_to_result_dict, subject_to_percentile_dict
 
 
 def _get_distance_to_result_dict(subject, exposure, calculation_type):

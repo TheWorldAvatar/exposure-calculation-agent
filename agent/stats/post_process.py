@@ -5,16 +5,12 @@ from agent.objects.exposure_dataset import get_exposure_dataset
 from agent.objects.exposure_result_set import ExposureResultSet
 from agent.utils.postgis_client import postgis_client
 from twa import agentlogging
-from psycopg2.extras import RealDictCursor, execute_values
-from scipy.stats import spearmanr
-from itertools import combinations
-from tqdm import tqdm
-import sys
+from psycopg2.extras import RealDictCursor
 
 logger = agentlogging.get_logger('dev')
 
 
-def post_process_correlation():
+def correlation_post_process():
     with postgis_client.connect() as conn:
         # returns something like {id: ExposureResultSet object}
         id_to_exposure_result_set, calc_iri_to_metadata = _get_exposure_result_set(

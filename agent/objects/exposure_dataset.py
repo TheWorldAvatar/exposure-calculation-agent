@@ -10,7 +10,7 @@ from datetime import date
 class ExposureDataset:
     iri: str
     table_name: str
-    url: str
+    url: Optional[str] = None
     geometry_column: str = None
     # used for area weighted calculation, pre-calculated area of a polygon (converted from pixel)
     area_column: Optional[str] = None

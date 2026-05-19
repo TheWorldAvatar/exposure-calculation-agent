@@ -190,6 +190,52 @@ def get_iri_to_point_dict(subject):
     return iri_to_point_dict
 
 
+def get_iri_to_point_dict_4326(subject):
+    # returns points in the original CRS
+    from agent.utils.kg_client import kg_client
+    if not isinstance(subject, list):
+        subject = [subject]
+
+    iri_to_point_dict = {}
+
+    query_template = """
+    SELECT ?subject ?wkt
+    WHERE {{
+        VALUES ?subject {{{values}}}.
+        ?subject <http://www.opengis.net/ont/geosparql#asWKT> ?wkt.
+    }}
+    """
+
+    logger.info(
+        'Querying geometries of subjects, number of subjects: ' + str(len(subject)))
+
+    query_list = []
+    # submit queries in batches to avoid crashing ontop
+    for chunk in _chunk_list(subject):
+        values = " ".join(f"<{s}>" for s in chunk)
+        query = query_template.format(values=values)
+        query_list.append(query)
+
+    for query in query_list:
+        query_result = json.loads(
+            kg_client.remote_store_client.executeQuery(query).toString())
+
+        for row in query_result:
+            sub = row['subject']
+            wkt_literal = row['wkt']
+
+            # strip RDF literal IRI, i.e. ^^<http://www.opengis.net/ont/geosparql#wktLiteral>
+            match = re.match(r'^"(.+)"\^\^<.+>$', wkt_literal)
+            if match:
+                geom = wkt.loads(match.group(1))
+            else:
+                geom = wkt.loads(wkt_literal)
+
+            iri_to_point_dict[sub] = geom.wkt
+
+    return iri_to_point_dict
+
+
 def get_iri_to_buffer_dict(subject, distance: float):
     # returns buffers in 4326
     from agent.utils.kg_client import kg_client
