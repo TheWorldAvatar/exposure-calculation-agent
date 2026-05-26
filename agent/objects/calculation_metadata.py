@@ -11,14 +11,27 @@ class CalculationMetadataException(Exception):
 
 
 class CalculationMetadata():
-    def __init__(self, rdf_type, distance: float = None, upperbound=None, lowerbound=None, iri=None, dataset_filter: dict = {}, areal_column_name=None):
+    def __init__(self, rdf_type, distance: float = None, upperbound=None, lowerbound=None, iri=None, dataset_filter: dict = {}, areal_column_name=None, areal_calculation: dict = None):
         self.rdf_type = rdf_type
         self.distance = distance
         self.upperbound = upperbound
         self.lowerbound = lowerbound
         self.iri = iri
         self.dataset_filter = dataset_filter
+
         self.areal_column_name = areal_column_name  # for areal calculation only
+
+        if areal_calculation is not None and self.areal_column_name is not None:
+            raise CalculationMetadataException(
+                'Duplicate specification for areal calc')
+
+        if areal_calculation is not None:
+            self.areal_column_name = areal_calculation['column_name']
+            if 'upperbound' in areal_calculation:
+                self.upperbound = areal_calculation['upperbound']
+
+            if 'lowerbound' in areal_calculation:
+                self.lowerbound = areal_calculation['lowerbound']
 
     def get_string(self) -> str:
         name = self.rdf_type.rstrip("/").split("/")[-1]
