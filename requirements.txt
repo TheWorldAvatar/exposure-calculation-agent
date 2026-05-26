@@ -10,3 +10,4 @@ pyproj
 scipy
 pandas
 matplotlib
+scikit-learn

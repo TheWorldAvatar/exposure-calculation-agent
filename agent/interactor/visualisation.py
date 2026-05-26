@@ -36,11 +36,21 @@ def create_layer():
     subject_table = inputs['subject_table']
     subject_query_file = inputs['subject_query_file']
 
+    if 'other_paint_properties' in inputs:
+        other_paint_properties = inputs['other_paint_properties']
+    else:
+        other_paint_properties = None
+
     subjects = _get_subjects(subject_query_file)
     if 'num_bin' in inputs:
         num_bin = inputs['num_bin']
     else:
         num_bin = 3
+
+    if 'colour_scheme' in inputs:
+        colour_scheme = inputs['colour_scheme']
+    else:
+        colour_scheme = 'jet'
 
     dataset_filters = [{}]
     if 'dataset_filter_values' in inputs:
@@ -69,7 +79,9 @@ def create_layer():
 
     # read in data json and add layer
     _update_data_json(host=host, layer_group_name=layer_group_name,
-                      exposure=exposure_dataset_iri, calculation=calculation, set_id=set_id, geoserver_layer_name=geoserver_layer_name, geoserver_workspace=geoserver_workspace, num_bin=num_bin)
+                      exposure=exposure_dataset_iri, calculation=calculation, set_id=set_id,
+                      geoserver_layer_name=geoserver_layer_name, geoserver_workspace=geoserver_workspace, num_bin=num_bin, colour_scheme=colour_scheme,
+                      other_paint_properties=other_paint_properties)
 
     return 'done'
 
@@ -209,7 +221,7 @@ def _create_geoserver_layer(geoserver_layer_name, geoserver_workspace, subject_t
         geoserver_workspace, "postgres", "public", geoserver_layer_name, geoServerVectorSettings)
 
 
-def _update_data_json(host, layer_group_name, exposure, calculation, set_id, geoserver_layer_name, geoserver_workspace, num_bin):
+def _update_data_json(host, layer_group_name, exposure, calculation, set_id, geoserver_layer_name, geoserver_workspace, num_bin, colour_scheme, other_paint_properties):
     path = Path(VIS_DATA_JSON)
     with path.open("r", encoding="utf-8") as f:
         data_json = json.load(f)
@@ -225,7 +237,7 @@ def _update_data_json(host, layer_group_name, exposure, calculation, set_id, geo
 
     group = {}
     group["name"] = layer_group_name
-    group["expanded"] = True
+    group["expanded"] = False
     group["stack"] = host + "/exposure-feature-info-agent/"
 
     source = {}
@@ -239,7 +251,7 @@ def _update_data_json(host, layer_group_name, exposure, calculation, set_id, geo
     layout["visibility"] = "none"
     group["layers"] = layers
 
-    cmap = plt.get_cmap("jet", num_bin)
+    cmap = plt.get_cmap(colour_scheme, num_bin)
     colors = [to_hex(cmap(i)) for i in range(cmap.N)]
 
     percentile_range = {}
@@ -270,7 +282,12 @@ def _update_data_json(host, layer_group_name, exposure, calculation, set_id, geo
                            ["<=", ["get", "percentile"],
                                percentile_range[percentile][1]]
                            ]
-        layer["paint"] = {"circle-color": percentile_colour[percentile]}
+        circle_color = {"circle-color": percentile_colour[percentile]}
+        if other_paint_properties is not None:
+            layer["paint"] = circle_color | other_paint_properties
+        else:
+            layer["paint"] = circle_color
+
         layers.append(layer)
 
     groups = data_json["groups"]
