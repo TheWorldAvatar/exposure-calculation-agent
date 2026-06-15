@@ -14,8 +14,7 @@ HAS_LOWERBOUND = PREFIX_EXPOSURE + 'hasLowerbound'
 HAS_DATASET_FILTER = PREFIX_EXPOSURE + 'hasDatasetFilter'
 HAS_FILTER_COLUMN = PREFIX_EXPOSURE + 'hasFilterColumn'
 HAS_FILTER_VALUE = PREFIX_EXPOSURE + 'hasFilterValue'
-HAS_AREAL_COLUMN_NAME = PREFIX_EXPOSURE + \
-    'hasArealColumnName'  # for areal calculation
+HAS_COLUMN_NAME = PREFIX_EXPOSURE + 'hasColumnName'
 
 EXP_HAS_VALUE = PREFIX_EXPOSURE + 'hasValue'
 DCTERM_TITLE = 'http://purl.org/dc/terms/title'

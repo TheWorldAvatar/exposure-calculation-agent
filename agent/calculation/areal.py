@@ -49,12 +49,12 @@ def areal(calculation_input: CalculationInput):
             temp_table_sql = temp_table_sql.format(
                 TEMP_TABLE=temp_table, EXPOSURE_DATASET=exposure_dataset.table_name,
                 GEOMETRY_COLUMN=geometry_column, DATASET_FILTERS=where_clause,
-                AREAL_COLUMN_NAME=calculation_input.calculation_metadata.areal_column_name)
+                COLUMN_NAME=calculation_input.calculation_metadata.column_name)
 
             cur.execute(temp_table_sql, params)
 
             areal_sql = areal_sql.format(
-                TEMP_TABLE=temp_table, AREAL_COLUMN_NAME=calculation_input.calculation_metadata.areal_column_name)
+                TEMP_TABLE=temp_table, COLUMN_NAME=calculation_input.calculation_metadata.column_name)
 
             for iri, point in tqdm(iri_to_point_dict.items(), mininterval=60, ncols=80, file=sys.stdout):
                 replacements = {
@@ -66,7 +66,7 @@ def areal(calculation_input: CalculationInput):
                     query_result = cur.fetchall()
                     if len(query_result) == 1:
                         subject_to_result_dict[iri] = ExposureValue(
-                            value=query_result[0][calculation_input.calculation_metadata.areal_column_name])
+                            value=query_result[0][calculation_input.calculation_metadata.column_name])
                     elif len(query_result) > 1:
                         raise Exception('More than one result?')
                     else:

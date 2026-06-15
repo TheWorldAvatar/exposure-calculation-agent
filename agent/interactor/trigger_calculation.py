@@ -110,7 +110,7 @@ def bulk_trigger_calculation():
                 for column_name in column_names:
                     # this will initialise a calculation if it does not exist and return the instantiated iri, or return an existing iri
                     calculation_iri = initialise_calculation(CalculationMetadata(
-                        rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, dataset_filter=dataset_filter, areal_column_name=column_name))
+                        rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, dataset_filter=dataset_filter, column_name=column_name))
 
                     logger.info('Calling core calculation agent')
 

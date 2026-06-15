@@ -125,8 +125,8 @@ def non_trajectory():
                     result_keys.append(
                         calculation.dataset_filter[filter_column])
 
-            if calculation.areal_column_name is not None:
-                result_keys.append(calculation.areal_column_name)
+            if calculation.column_name is not None:
+                result_keys.append(calculation.column_name)
 
             current = overall_result
             for k in result_keys[:-1]:
@@ -137,7 +137,7 @@ def non_trajectory():
     logger.info('Producing csv file')
     header_keys = filter_columns
     header_keys.insert(0, 'distance')
-    if calculation_metadata_list[0].areal_column_name is not None:
+    if calculation_metadata_list[0].column_name is not None:
         header_keys.append("a")
     header_keys = [s[0] for s in header_keys]  # take first letter only
     csv = _create_csv_result_keys(overall_result=overall_result, header_keys=header_keys,
@@ -632,7 +632,7 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
         SERVICE<{blazegraph_url}> {{
             ?calculation a <{rdf_type}>.
             OPTIONAL{{?calculation <{has_distance}> ?distance.}}
-            OPTIONAL{{?calculation <{has_areal_column_name}> ?column_name.}}
+            OPTIONAL{{?calculation <{has_column_name}> ?column_name.}}
             {dataset_filter_clauses}
         }}
     }}
@@ -644,7 +644,7 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
 
         query = query_template.format(rdf_type=rdf_type, has_distance=constants.HAS_DISTANCE,
                                       dataset_filter_clauses="\n".join(
-                                          dataset_filter_where_clauses), blazegraph_url=BLAZEGRAPH_URL, has_areal_column_name=constants.HAS_AREAL_COLUMN_NAME)
+                                          dataset_filter_where_clauses), blazegraph_url=BLAZEGRAPH_URL, has_column_name=constants.HAS_COLUMN_NAME)
 
         query_results = json.loads(
             kg_client.remote_store_client.executeQuery(query).toString())
@@ -669,12 +669,12 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
 
         for calculation_iri, distance in calc_to_distance.items():
             calculations.append(CalculationMetadata(
-                iri=calculation_iri, rdf_type=rdf_type, dataset_filter=dataset_filter, distance=distance, areal_column_name=calc_to_column_name[calculation_iri]))
+                iri=calculation_iri, rdf_type=rdf_type, dataset_filter=dataset_filter, distance=distance, column_name=calc_to_column_name[calculation_iri]))
 
     if len(dataset_filters) == 0:
         filter_not_exists = f"FILTER NOT EXISTS {{?calculation <{constants.HAS_DATASET_FILTER}> ?filter}}"
         query = query_template.format(rdf_type=rdf_type, has_distance=constants.HAS_DISTANCE,
-                                      dataset_filter_clauses=filter_not_exists, blazegraph_url=BLAZEGRAPH_URL, has_areal_column_name=constants.HAS_AREAL_COLUMN_NAME)
+                                      dataset_filter_clauses=filter_not_exists, blazegraph_url=BLAZEGRAPH_URL, has_column_name=constants.HAS_COLUMN_NAME)
 
         query_results = json.loads(
             kg_client.remote_store_client.executeQuery(query).toString())
@@ -700,7 +700,7 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
 
         for calculation_iri, distance in calc_to_distance.items():
             calculations.append(CalculationMetadata(
-                iri=calculation_iri, rdf_type=rdf_type, distance=distance, areal_column_name=calc_to_column_name[calculation_iri]))
+                iri=calculation_iri, rdf_type=rdf_type, distance=distance, column_name=calc_to_column_name[calculation_iri]))
 
     return calculations
 
