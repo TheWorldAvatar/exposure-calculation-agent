@@ -65,11 +65,6 @@ def bulk_trigger_calculation():
     else:
         column_names = [None]
 
-    if 'areal_calculations' in inputs:
-        areal_calculations = inputs['areal_calculations']
-    else:
-        areal_calculations = [None]
-
     upperbound = None
     if 'upperbound' in inputs:
         upperbound = inputs['upperbound']
@@ -113,23 +108,21 @@ def bulk_trigger_calculation():
         for distance in distances:
             for dataset_filter in dataset_filters:
                 for column_name in column_names:
-                    for areal_calculation in areal_calculations:
-                        # this will initialise a calculation if it does not exist and return the instantiated iri, or return an existing iri
-                        calculation_iri = initialise_calculation(CalculationMetadata(
-                            rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound,
-                            dataset_filter=dataset_filter, areal_column_name=column_name, areal_calculation=areal_calculation))
+                    # this will initialise a calculation if it does not exist and return the instantiated iri, or return an existing iri
+                    calculation_iri = initialise_calculation(CalculationMetadata(
+                        rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, dataset_filter=dataset_filter, areal_column_name=column_name))
 
-                        logger.info('Calling core calculation agent')
+                    logger.info('Calling core calculation agent')
 
-                        # call core calculation agent
-                        do_calculation(subject=subject if subject is not None else subject_list,
-                                       calculation=calculation_iri, exposure=exposure_dataset_iri)
+                    # call core calculation agent
+                    do_calculation(subject=subject if subject is not None else subject_list,
+                                   calculation=calculation_iri, exposure=exposure_dataset_iri)
 
-                        logger.info(
-                            f"""
-                                Completed calculation for: rdf_type={rdf_type}, distance={distance}, upperbound={upperbound}, 
-                                lowerbound={lowerbound}, dataset_filter={dataset_filter}, exposure={exposure_table}, column_name={column_name}, areal_calc={areal_calculation}
-                            """)
+                    logger.info(
+                        f"""
+                            Completed calculation for: rdf_type={rdf_type}, distance={distance}, upperbound={upperbound}, 
+                            lowerbound={lowerbound}, dataset_filter={dataset_filter}, exposure={exposure_table}, column_name={column_name}
+                        """)
 
     return f"Finished all calculations for request: {inputs}"
 
