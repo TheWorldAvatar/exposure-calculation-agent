@@ -3,8 +3,14 @@ WITH buffer_circle AS (
         ST_GeomFromText(%(GEOMETRY_PLACEHOLDER)s, 3857),
         %(DISTANCE_PLACEHOLDER)s  -- buffer radius in meters
     ) AS geom
+),
+polygon_union AS (
+    SELECT ST_UnaryUnion(ST_Collect(b.wkb_geometry)) AS geom
+    FROM {TEMP_TABLE} b
+    JOIN buffer_circle c ON
+    ST_Intersects(b.wkb_geometry, c.geom)
 )
 
-SELECT SUM(ST_Area(ST_Intersection(wkb_geometry, buffer_circle.geom)))
-FROM {TEMP_TABLE}, buffer_circle
-WHERE ST_Intersects(wkb_geometry, buffer_circle.geom)
+SELECT ST_Area(ST_Intersection(b.geom, c.geom))
+FROM buffer_circle c
+CROSS JOIN polygon_union b
