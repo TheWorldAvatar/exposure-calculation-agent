@@ -11,6 +11,7 @@ from agent.calculation.simple_area import simple_area
 from agent.calculation.total_length import total_length
 from agent.calculation.trajectory import trajectory
 from agent.calculation.simple_count import simple_count
+from agent.calculation.weighted_average import weighted_average
 from agent.objects.calculation_metadata import get_calculation_metadata
 import agent.utils.constants as constants
 from agent.calculation.calculation_input import CalculationInput
@@ -30,7 +31,8 @@ function_map = {
     constants.CLOSEST_DISTANCE: closest_distance,
     constants.TOTAL_LENGTH: total_length,
     constants.AREAL: areal,
-    constants.AVERAGE: average
+    constants.AVERAGE: average,
+    constants.WEIGHTED_AVERAGE: weighted_average
 }
 
 CALCULATE_ROUTE = '/calculate_exposure'

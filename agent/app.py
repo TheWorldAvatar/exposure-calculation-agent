@@ -1,4 +1,5 @@
 from flask import Flask
+from agent.interactor.manual_result_instantiation import manual_instantiation_bp
 from agent.interactor.trigger_calculation import trigger_calculation_bp
 from agent.interactor.stats import stats_blueprint
 from agent.calculation.api import calculation_blueprint
@@ -11,6 +12,7 @@ app.register_blueprint(calculation_blueprint)
 app.register_blueprint(csv_export_bp)
 app.register_blueprint(stats_blueprint)
 app.register_blueprint(visualisation_bp)
+app.register_blueprint(manual_instantiation_bp)
 
 if __name__ == "__main__":
     app.run()
