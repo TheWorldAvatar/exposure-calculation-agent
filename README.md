@@ -6,6 +6,7 @@ Calculates exposure of specified subjects to features in the environment. This a
 
 1) NAMESPACE (namespace of blazegraph, defaults to kb)
 2) DATABASE (database name of postgres, defaults to postgres)
+3) VIS_DATA_JSON (file path to data.json for visualisation, only used by routes in agent/interactor/visualisation.py, not needed for calculations)
 
 ## Building and debugging
 
@@ -105,11 +106,11 @@ A PostGIS point time series instantiated using the TimeSeriesClient:
 
 Time series data:
 
-| time    | points (WKB in database) |
-| --------| ------- |
-| 1 | POINT(1 2)    |
-| 2 | POINT(3 4)    |
-| 3 | POINT(5 6)    |
+| time | points (WKB in database) |
+| -------- | ------- |
+| 1 | POINT(1 2) |
+| 2 | POINT(3 4) |
+| 3 | POINT(5 6) |
 
 A trajectory can be accompanied by trip data instantiated by the trip agent (<https://github.com/TheWorldAvatar/trip-agent>), the trip data shares the same time values as the subject of exposure:
 
