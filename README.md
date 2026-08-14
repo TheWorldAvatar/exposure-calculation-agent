@@ -6,6 +6,7 @@ Calculates exposure of specified subjects to features in the environment. This a
 
 1) NAMESPACE (namespace of blazegraph, defaults to kb)
 2) DATABASE (database name of postgres, defaults to postgres)
+3) VIS_DATA_JSON (file path to data.json for visualisation, only used by routes in agent/interactor/visualisation.py, not needed for calculations)
 
 ## Building and debugging
 
@@ -105,11 +106,11 @@ A PostGIS point time series instantiated using the TimeSeriesClient:
 
 Time series data:
 
-| time    | points (WKB in database) |
-| --------| ------- |
-| 1 | POINT(1 2)    |
-| 2 | POINT(3 4)    |
-| 3 | POINT(5 6)    |
+| time | points (WKB in database) |
+| -------- | ------- |
+| 1 | POINT(1 2) |
+| 2 | POINT(3 4) |
+| 3 | POINT(5 6) |
 
 A trajectory can be accompanied by trip data instantiated by the trip agent (<https://github.com/TheWorldAvatar/trip-agent>), the trip data shares the same time values as the subject of exposure:
 
@@ -193,12 +194,33 @@ If trip data is not present, entire trajectory is treated as a single trip:
 Supported calculation types:
 
 1. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`
+   - Applies a buffer and counts the number of intersected features around  
 2. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`
+   - Applies a buffer and sums the intersection area with the exposure dataset
 3. `<https://www.theworldavatar.com/kg/ontoexposure/Count>`
+   - Applies a buffer and counts the number of intersected features
 4. `<https://www.theworldavatar.com/kg/ontoexposure/Area>`
+   - Applies a buffer and sums the intersection area
 5. `<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`
+   - Applies a buffer, sums pixel values within the buffer, and multiplies them by pixel area. Requires pixel area for each tile to be precomputed in a column.
 6. `<https://www.theworldavatar.com/kg/ontoexposure/RasterArea>`
+   - Applies a buffer, and sums up the area. Requires pixel area for each tile to be precomputed on column.
 7. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`
+   - Similar to AreaWeightedSum but for trajectories
+8. `<https://www.theworldavatar.com/kg/ontoexposure/RasterAverage>`
+   - Applies a buffer, averages pixel values enclosed by the buffer
+9. `<https://www.theworldavatar.com/kg/ontoexposure/RasterSum>`
+   - Applies a buffer, sums up the pixel values enclosed by the buffer
+10. `<https://www.theworldavatar.com/kg/ontoexposure/ClosestDistance>`
+    - Gets the closest distance between the subject and features in the exposure dataset
+11. `<https://www.theworldavatar.com/kg/ontoexposure/TotalLength>`
+    - Applies a buffer, sums up the length of lines enclosed by buffer
+12. `<https://www.theworldavatar.com/kg/ontoexposure/Average>`
+    - Applies a buffer, averages the values associated with the intersected features.
+13. `<https://www.theworldavatar.com/kg/ontoexposure/WeightedAverage>`
+    - Similar to Average, but with weights
+14. `<https://www.theworldavatar.com/kg/ontoexposure/Areal>`
+    - Directly assign value associated with the intersected feature
 
 Permissible metadata depends on the calculation type. A result instance is instantiated for each subject - exposure - calculation combination.
 
@@ -218,6 +240,23 @@ PREFIX exposure: <https://www.theworldavatar.com/kg/ontoexposure/>
 ```
 
 This will add `WHERE year=2000` into the SQL queries for the calculations.
+
+**Column name**:
+
+Column name is required for these calculations:
+
+- `<https://www.theworldavatar.com/kg/ontoexposure/Average>`
+- `<https://www.theworldavatar.com/kg/ontoexposure/WeightedAverage>`
+- `<https://www.theworldavatar.com/kg/ontoexposure/Areal>`
+
+E.g.
+
+```sparql
+PREFIX exposure: <https://www.theworldavatar.com/kg/ontoexposure/>
+
+<http://calculation> a exposure:Areal;
+    exposure:hasColumnName "value_column".
+```
 
 #### Trajectory count (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`)
 
@@ -372,12 +411,11 @@ Calculation instance:
     <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
 ```
 
-Exposure dataset, needs to have the area and value columns specified, if geometry column is not specified, it will default to 'wkb_geometry'.
+Exposure dataset, needs to have the area column specified, if geometry column is not specified, it will default to 'wkb_geometry'.
 
 ```ttl
 <http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
     <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
-    <https://www.theworldavatar.com/kg/ontoexposure/hasValueColumn> "val";
     <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
 ```
 

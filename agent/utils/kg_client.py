@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from agent.objects.time_series import TimeSeries
 from agent.utils.stack_gateway import stack_clients_view
 from agent.utils.stack_configs import BLAZEGRAPH_URL, STACK_OUTGOING, ONTOP_URL
@@ -10,6 +12,7 @@ from urllib.parse import urlsplit
 from py4j.java_gateway import JavaObject
 import json
 from datetime import datetime
+from rdflib.plugins.sparql.parser import parseQuery
 
 logger = agentlogging.get_logger('dev')
 
@@ -204,6 +207,34 @@ class KgClient():
                     f"Detected time class {time_class} is not supported")
         else:
             raise Exception(f"Not able to obtain time class of <{iri}>")
+
+    def get_subjects_via_file(self, subject_query_file: str):
+        with open(Path(constants.BIND_MOUNT_PATH)/subject_query_file, "r") as f:
+            query = f.read()
+
+        parsed = parseQuery(query)
+
+        if len(parsed[1]['projection']) != 1:
+            raise Exception(
+                'Provided query needs to have exactly one select variable')
+
+        select_var = str(parsed[1]['projection'][0]['var'])
+
+        logger.info(
+            'Querying subject IRIs with provided SPARQL query template')
+        query_result = json.loads(
+            kg_client.remote_store_client.executeQuery(query).toString())
+
+        logger.info('Received ' + str(len(query_result)) + ' IRIs')
+
+        if len(query_result) == 0:
+            logger.warning('There are no subject IRIs')
+
+        subject_list = []
+        for i in query_result:
+            subject_list.append(i[select_var])
+
+        return subject_list
 
 
 class RetryRemoteStoreClient:

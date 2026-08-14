@@ -42,6 +42,7 @@ def bulk_trigger_calculation():
     #         2016
     #         ]
     #     },
+    #     "column_names": ["column1"], // only applicable for Areal calculation
     #     // provide either subject_query_file or subject, not both
     #     "subject_query_file": "subject_query.sparql",
     #     "subject": "http://subject"
@@ -54,7 +55,15 @@ def bulk_trigger_calculation():
     inputs = request.json
     exposure_table = inputs['exposure_table']
     rdf_types = inputs['rdf_types']
-    distances = inputs['distances']
+    if 'distances' in inputs:
+        distances = inputs['distances']
+    else:
+        distances = [None]
+
+    if 'column_names' in inputs:
+        column_names = inputs['column_names']
+    else:
+        column_names = [None]
 
     upperbound = None
     if 'upperbound' in inputs:
@@ -89,31 +98,8 @@ def bulk_trigger_calculation():
 
     # do SPARQL query to obtain a list of subject IRIs
     if subject_query_file is not None:
-        with open(Path(constants.BIND_MOUNT_PATH)/subject_query_file, "r") as f:
-            query = f.read()
-
-        parsed = parseQuery(query)
-
-        if len(parsed[1]['projection']) != 1:
-            raise Exception(
-                'Provided query needs to have exactly one select variable')
-
-        select_var = str(parsed[1]['projection'][0]['var'])
-
-        logger.info(
-            'Querying subject IRIs with provided SPARQL query template')
-        query_result = json.loads(
-            kg_client.remote_store_client.executeQuery(query).toString())
-
-        logger.info('Received ' + str(len(query_result)) + ' IRIs')
-
-        if len(query_result) == 0:
-            logger.warning('There are no subject IRIs')
-            return
-
-        subject_list = []
-        for i in query_result:
-            subject_list.append(i[select_var])
+        subject_list = kg_client.get_subjects_via_file(
+            subject_query_file=subject_query_file)
 
     # get dataset iri to pass the core calculation agent
     exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)
@@ -121,21 +107,22 @@ def bulk_trigger_calculation():
     for rdf_type in rdf_types:
         for distance in distances:
             for dataset_filter in dataset_filters:
-                # this will initialise a calculation if it does not exist and return the instantiated iri, or return an existing iri
-                calculation_iri = initialise_calculation(CalculationMetadata(
-                    rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, dataset_filter=dataset_filter))
+                for column_name in column_names:
+                    # this will initialise a calculation if it does not exist and return the instantiated iri, or return an existing iri
+                    calculation_iri = initialise_calculation(CalculationMetadata(
+                        rdf_type=rdf_type, distance=distance, upperbound=upperbound, lowerbound=lowerbound, dataset_filter=dataset_filter, column_name=column_name))
 
-                logger.info('Calling core calculation agent')
+                    logger.info('Calling core calculation agent')
 
-                # call core calculation agent
-                do_calculation(subject=subject if subject is not None else subject_list,
-                               calculation=calculation_iri, exposure=exposure_dataset_iri)
+                    # call core calculation agent
+                    do_calculation(subject=subject if subject is not None else subject_list,
+                                   calculation=calculation_iri, exposure=exposure_dataset_iri)
 
-                logger.info(
-                    f"""
-                        Completed calculation for: rdf_type={rdf_type}, distance={distance}, upperbound={upperbound}, 
-                        lowerbound={lowerbound}, dataset_filter={dataset_filter}
-                    """)
+                    logger.info(
+                        f"""
+                            Completed calculation for: rdf_type={rdf_type}, distance={distance}, upperbound={upperbound}, 
+                            lowerbound={lowerbound}, dataset_filter={dataset_filter}, exposure={exposure_table}, column_name={column_name}
+                        """)
 
     return f"Finished all calculations for request: {inputs}"
 
@@ -168,31 +155,8 @@ def trigger_calculation():
 
     # do SPARQL query to obtain a list of subject IRIs
     if subject_query_file is not None:
-        with open(Path(constants.BIND_MOUNT_PATH)/subject_query_file, "r") as f:
-            query = f.read()
-
-        parsed = parseQuery(query)
-
-        if len(parsed[1]['projection']) != 1:
-            raise Exception(
-                'Provided query needs to have exactly one select variable')
-
-        select_var = str(parsed[1]['projection'][0]['var'])
-
-        logger.info(
-            'Querying subject IRIs with provided SPARQL query template')
-        query_result = json.loads(
-            kg_client.remote_store_client.executeQuery(query).toString())
-
-        logger.info('Received ' + str(len(query_result)) + ' IRIs')
-
-        if len(query_result) == 0:
-            logger.warning('There are no subject IRIs')
-            return
-
-        subject_list = []
-        for i in query_result:
-            subject_list.append(i[select_var])
+        subject_list = kg_client.get_subjects_via_file(
+            subject_query_file=subject_query_file)
 
     # get dataset iri to pass the core calculation agent
     exposure_dataset_iri = get_dataset_iri(table_name=exposure_table)

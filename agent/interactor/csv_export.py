@@ -102,7 +102,7 @@ def non_trajectory():
         for calculation in calculation_metadata_list:
             logger.info(f"Querying results for <{calculation.iri}>")
 
-            subject_to_result_dict = _get_subject_to_result_dict_calc_iri_sql(
+            subject_to_result_dict, _ = _get_subject_to_result_dict_calc_iri_sql(
                 exposure=exposure_dataset_iri, calculation_iri=calculation.iri, subject=subject, conn=conn)
 
             if not subject_to_result_dict:
@@ -110,7 +110,10 @@ def non_trajectory():
 
             # prepare keys for overall result dict
             result_keys = []
-            result_keys.append(round(calculation.distance))
+            if calculation.distance is None:
+                result_keys.append(0)
+            else:
+                result_keys.append(round(calculation.distance))
 
             for filter_column in filter_columns:
                 if isinstance(calculation.dataset_filter[filter_column], bool):
@@ -122,6 +125,9 @@ def non_trajectory():
                     result_keys.append(
                         calculation.dataset_filter[filter_column])
 
+            if calculation.column_name is not None:
+                result_keys.append(calculation.column_name)
+
             current = overall_result
             for k in result_keys[:-1]:
                 current = current.setdefault(k, {})
@@ -131,6 +137,8 @@ def non_trajectory():
     logger.info('Producing csv file')
     header_keys = filter_columns
     header_keys.insert(0, 'distance')
+    if calculation_metadata_list[0].column_name is not None:
+        header_keys.append("a")
     header_keys = [s[0] for s in header_keys]  # take first letter only
     csv = _create_csv_result_keys(overall_result=overall_result, header_keys=header_keys,
                                   subject_to_label_dict=subject_to_label_dict, subject_to_point_dict=subject_to_point_dict)
@@ -292,7 +300,7 @@ def _get_subject_to_result_dict_calc_iri(subject, exposure, calculation_iri):
 
 def _get_subject_to_result_dict_calc_iri_sql(exposure=None, calculation_iri=None, subject=None, conn=None):
     query = f"""
-    SELECT subject, value
+    SELECT subject, value, percentile
     FROM exposure_result e
     WHERE exposure = %(EXPOSURE_PLACEHOLDER)s
     AND calculation = %(CALCULATION_PLACEHOLDER)s
@@ -308,6 +316,7 @@ def _get_subject_to_result_dict_calc_iri_sql(exposure=None, calculation_iri=None
         replacements['SUBJECT_PLACEHOLDER'] = subject
 
     subject_to_result_dict = {}
+    subject_to_percentile_dict = {}
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(query, replacements)
 
@@ -315,8 +324,9 @@ def _get_subject_to_result_dict_calc_iri_sql(exposure=None, calculation_iri=None
             query_result = cur.fetchall()
             for row in query_result:
                 subject_to_result_dict[row['subject']] = row['value']
+                subject_to_percentile_dict[row['subject']] = row['percentile']
 
-    return subject_to_result_dict
+    return subject_to_result_dict, subject_to_percentile_dict
 
 
 def _get_distance_to_result_dict(subject, exposure, calculation_type):
@@ -617,11 +627,12 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
     from agent.utils.kg_client import kg_client
 
     query_template = """
-    SELECT ?calculation ?distance
+    SELECT ?calculation ?distance ?column_name
     WHERE {{
         SERVICE<{blazegraph_url}> {{
-            ?calculation a <{rdf_type}>;
-                <{has_distance}> ?distance.
+            ?calculation a <{rdf_type}>.
+            OPTIONAL{{?calculation <{has_distance}> ?distance.}}
+            OPTIONAL{{?calculation <{has_column_name}> ?column_name.}}
             {dataset_filter_clauses}
         }}
     }}
@@ -633,33 +644,43 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
 
         query = query_template.format(rdf_type=rdf_type, has_distance=constants.HAS_DISTANCE,
                                       dataset_filter_clauses="\n".join(
-                                          dataset_filter_where_clauses), blazegraph_url=BLAZEGRAPH_URL)
+                                          dataset_filter_where_clauses), blazegraph_url=BLAZEGRAPH_URL, has_column_name=constants.HAS_COLUMN_NAME)
 
         query_results = json.loads(
             kg_client.remote_store_client.executeQuery(query).toString())
 
         calc_to_distance = {}
+        calc_to_column_name = {}
 
         if len(query_results) == 0:
             logger.warning(f"No results for {dataset_filter}")
             continue
 
         for row in query_results:
-            calc_to_distance[row['calculation']] = float(row['distance'])
+            if 'distance' in row:
+                calc_to_distance[row['calculation']] = float(row['distance'])
+            else:
+                calc_to_distance[row['calculation']] = None
+
+            if 'column_name' in row:
+                calc_to_column_name[row['calculation']] = row['column_name']
+            else:
+                calc_to_column_name[row['calculation']] = None
 
         for calculation_iri, distance in calc_to_distance.items():
             calculations.append(CalculationMetadata(
-                iri=calculation_iri, rdf_type=rdf_type, dataset_filter=dataset_filter, distance=distance))
+                iri=calculation_iri, rdf_type=rdf_type, dataset_filter=dataset_filter, distance=distance, column_name=calc_to_column_name[calculation_iri]))
 
     if len(dataset_filters) == 0:
         filter_not_exists = f"FILTER NOT EXISTS {{?calculation <{constants.HAS_DATASET_FILTER}> ?filter}}"
         query = query_template.format(rdf_type=rdf_type, has_distance=constants.HAS_DISTANCE,
-                                      dataset_filter_clauses=filter_not_exists, blazegraph_url=BLAZEGRAPH_URL)
+                                      dataset_filter_clauses=filter_not_exists, blazegraph_url=BLAZEGRAPH_URL, has_column_name=constants.HAS_COLUMN_NAME)
 
         query_results = json.loads(
             kg_client.remote_store_client.executeQuery(query).toString())
 
         calc_to_distance = {}
+        calc_to_column_name = {}
 
         if len(query_results) == 0:
             logger.warning(
@@ -667,11 +688,19 @@ def _get_calculations(rdf_type: str, dataset_filters: list[dict]) -> list[Calcul
             return
 
         for row in query_results:
-            calc_to_distance[row['calculation']] = float(row['distance'])
+            if 'distance' in row:
+                calc_to_distance[row['calculation']] = float(row['distance'])
+            else:
+                calc_to_distance[row['calculation']] = None
+
+            if 'column_name' in row:
+                calc_to_column_name[row['calculation']] = row['column_name']
+            else:
+                calc_to_column_name[row['calculation']] = None
 
         for calculation_iri, distance in calc_to_distance.items():
             calculations.append(CalculationMetadata(
-                iri=calculation_iri, rdf_type=rdf_type, distance=distance))
+                iri=calculation_iri, rdf_type=rdf_type, distance=distance, column_name=calc_to_column_name[calculation_iri]))
 
     return calculations
 

@@ -13,7 +13,7 @@ logger = agentlogging.get_logger('dev')
 
 
 def raster_sum(calculation_input: CalculationInput):
-    # sum pixel values around buffer
+    # sum values of pixels clipped by buffer
     iri_to_buffer_dict = get_iri_to_buffer_dict(
         subject=calculation_input.subject, distance=calculation_input.calculation_metadata.distance)
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
@@ -54,7 +54,7 @@ def raster_sum(calculation_input: CalculationInput):
     logger.info('Instantiating results')
     instantiate_result_ontop(subject_to_result_dict, calculation_input)
 
-    complete_message = 'Completed calculation for raster sum'
+    complete_message = 'Completed calculation for raster count'
     logger.info(complete_message)
 
     return complete_message

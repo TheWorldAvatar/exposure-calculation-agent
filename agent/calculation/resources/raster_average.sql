@@ -8,5 +8,11 @@ clipped_raster AS (
     WHERE ST_Intersects(b.geom, r.{GEOMETRY_COLUMN})
     {DATASET_FILTERS}
 )
-SELECT COALESCE(SUM((ST_SummaryStats(clipped)).count), 0) AS result
-FROM clipped_raster
+SELECT COALESCE(
+    SUM((stats).sum) / NULLIF(SUM((stats).count), 0),
+    0
+) AS result
+FROM (
+    SELECT ST_SummaryStats(clipped) AS stats
+    FROM clipped_raster
+) t;
