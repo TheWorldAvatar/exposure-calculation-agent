@@ -5,7 +5,7 @@ from agent.calculation.areal import areal
 from agent.calculation.average import average
 from agent.calculation.closest_distance import closest_distance
 from agent.calculation.raster_area import raster_area
-from agent.calculation.raster_count import raster_count
+from agent.calculation.raster_sum import raster_sum
 from agent.calculation.raster_average import raster_average
 from agent.calculation.simple_area import simple_area
 from agent.calculation.total_length import total_length
@@ -25,7 +25,7 @@ function_map = {
     constants.SIMPLE_COUNT: simple_count,
     constants.AREA_WEIGHTED_SUM: area_weighted_sum,
     constants.SIMPLE_AREA: simple_area,
-    constants.RASTER_COUNT: raster_count,
+    constants.RASTER_SUM: raster_sum,
     constants.RASTER_AREA: raster_area,
     constants.RASTER_AVERAGE: raster_average,
     constants.CLOSEST_DISTANCE: closest_distance,
