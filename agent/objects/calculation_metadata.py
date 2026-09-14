@@ -100,16 +100,22 @@ class CalculationMetadata():
         elif self.upperbound is not None:
             raise CalculationMetadataException(
                 'Unsupported format of upperbound')
+        else:
+            where_clauses.append(
+                f"FILTER NOT EXISTS{{?{var} <{constants.HAS_UPPERBOUND}> ?upperbound}}.")
 
         if self.lowerbound is not None and is_integer(self.lowerbound):
             where_clauses.append(
                 f"?{var} <{constants.HAS_LOWERBOUND}> {self.lowerbound}.")
         elif self.lowerbound is not None and is_datetime(self.lowerbound):
             where_clauses.append(
-                f"?{var} <{constants.HAS_LOWERBOUND}> \"{self.lowerbound}\"xsd:dateTime.")
+                f"?{var} <{constants.HAS_LOWERBOUND}> \"{self.lowerbound}\"^^xsd:dateTime.")
         elif self.lowerbound is not None:
             raise CalculationMetadataException(
                 'Unsupported format of lowerbound')
+        else:
+            where_clauses.append(
+                f"FILTER NOT EXISTS{{?{var} <{constants.HAS_LOWERBOUND}> ?lowerbound}}.")
 
         if self.dataset_filter:
             where_clauses.extend(get_dataset_filter_where_clauses(
