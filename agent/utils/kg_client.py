@@ -79,7 +79,7 @@ class KgClient():
 
         if lowerbound is not None:
             lowerbound = self.convert_input_time_for_timeseries(
-                measures[0], lowerbound)
+                lowerbound, measures[0])
             if isinstance(lowerbound, JavaObject):
                 condition = f""" ?timestamp >= "{lowerbound[0].toString()}"^^xsd:dateTime"""
             else:
@@ -88,7 +88,7 @@ class KgClient():
 
         if upperbound is not None:
             upperbound = self.convert_input_time_for_timeseries(
-                measures[0], upperbound)
+                upperbound, measures[0])
             if isinstance(upperbound, JavaObject):
                 condition = f"""?timestamp <= "{upperbound[0].toString()}"^^xsd:dateTime"""
             else:
@@ -101,6 +101,7 @@ class KgClient():
 
         query = f"""
         PREFIX time: <http://www.w3.org/2006/time#>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
         SELECT ?timestamp ?time_number ?val ?measure
         WHERE {{
