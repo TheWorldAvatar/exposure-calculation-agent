@@ -160,7 +160,7 @@ class KgClient():
                 time_number_list_list.append(time_number_list)
                 time_series.add_time_number(measure, time_number_list)
 
-            time_series.add_value(measure, value_dict[measure])
+            time_series.add_value(measure, value_dict.get(measure, []))
 
         if timestamp_list_list:
             # check all time lists are equal

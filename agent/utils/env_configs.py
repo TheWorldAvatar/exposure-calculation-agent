@@ -1,5 +1,8 @@
 import os
 
+KEYCLOAK_SERVER = os.getenv('KEYCLOAK_SERVER', '')
+KEYCLOAK_REALM = os.getenv('KEYCLOAK_REALM', '')
+
 
 def retrieve_default_settings():
     global NAMESPACE, DATABASE, STACK_NAME, VIS_DATA_JSON
