@@ -3,6 +3,7 @@ from datetime import datetime
 from functools import lru_cache
 import json
 import math
+import re
 from urllib.parse import quote
 
 from flask import Blueprint, request
@@ -68,9 +69,10 @@ def parse_settings(args):
     rdf_type = args.get('rdf_type')
     if rdf_type not in constants.TRAJECTORY_TYPES:
         raise ValueError('rdf_type must be a trajectory calculation type')
-    exposure_table = args.get('exposure_table', '').strip()
-    if not exposure_table or any(c in exposure_table for c in '"\\\r\n'):
-        raise ValueError('Provide a valid exposure_table')
+    dataset_iri = args.get('dataset_iri', '').strip()
+    if (not re.match(r'^[A-Za-z][A-Za-z0-9+.-]*:.+$', dataset_iri)
+            or any(c.isspace() or ord(c) < 32 or c in '<>"{}|^`\\' for c in dataset_iri)):
+        raise ValueError('Provide a valid absolute dataset_iri')
     try:
         distance = float(args.get('distance', ''))
     except (ValueError, TypeError) as ex:
@@ -92,17 +94,34 @@ def parse_settings(args):
         bounds[name] = value
     if len(parsed) == 2 and parsed['lowerbound'] > parsed['upperbound']:
         raise ValueError('lowerbound must not exceed upperbound')
-    return rdf_type, exposure_table, distance, bounds
+    return rdf_type, dataset_iri, distance, bounds
 
 
 @trajectory_timeline_bp.route('/calculate_exposure_for_timeline', methods=['POST'])
 def calculate_exposure_for_timeline():
+    """Calculate exposure for the authenticated user's trajectory points.
+
+    Required header:
+        Authorization: Bearer <access-token> (a valid Keycloak user token).
+
+    Required query parameters:
+        rdf_type: Calculation type IRI from constants.TRAJECTORY_TYPES.
+        dataset_iri: Absolute exposure dataset IRI, passed directly to calculation.
+        distance: Buffer distance in metres; must be finite and non-negative.
+
+    Optional query parameters:
+        lowerbound, upperbound: ISO datetimes with timezones (inclusive bounds).
+            If both are supplied, lowerbound must not exceed upperbound.
+
+    Trajectory point IRIs are resolved from the token's user identity;
+    caller-supplied subject or user identity parameters are not accepted.
+    """
     try:
         user_id = get_authenticated_user_id(request.headers.get('Authorization'))
     except AuthenticationError as ex:
         return str(ex), 401, {'WWW-Authenticate': 'Bearer'}
     try:
-        rdf_type, exposure_table, distance, bounds = parse_settings(request.args)
+        rdf_type, dataset_iri, distance, bounds = parse_settings(request.args)
     except ValueError as ex:
         return str(ex), 400
 
@@ -110,15 +129,13 @@ def calculate_exposure_for_timeline():
     if not point_iris:
         return 'No trajectory points found for authenticated user', 404
 
-    from agent.interactor.trigger_calculation import get_dataset_iri
     from agent.interactor.initialise_calculation import initialise_calculation
     from agent.objects.calculation_metadata import CalculationMetadata
     from agent.calculation.api import do_calculation
-    exposure = get_dataset_iri(exposure_table)
     calculation = initialise_calculation(CalculationMetadata(
         rdf_type=rdf_type, distance=distance, **bounds))
     try:
-        return do_calculation(subject=point_iris, calculation=calculation, exposure=exposure,
+        return do_calculation(subject=point_iris, calculation=calculation, exposure=dataset_iri,
                               timeline=True)
     except ValueError as ex:
         return str(ex), 400
