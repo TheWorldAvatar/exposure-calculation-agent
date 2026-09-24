@@ -38,13 +38,17 @@ function_map = {
 CALCULATE_ROUTE = '/calculate_exposure'
 
 
-def do_calculation(subject, calculation, exposure):
+def do_calculation(subject, calculation, exposure, *, timeline=False):
     calculation_metadata = get_calculation_metadata(calculation)
 
     calculation_input = CalculationInput(
         subject=subject, exposure=exposure, calculation_metadata=calculation_metadata)
 
     # calls the appropriate function according to calculation rdf_type
+    if timeline:
+        if calculation_metadata.rdf_type not in constants.TRAJECTORY_TYPES:
+            raise ValueError('Timeline processing requires a trajectory calculation')
+        return trajectory(calculation_input, timeline=True)
     return function_map[calculation_metadata.rdf_type](calculation_input)
 
 

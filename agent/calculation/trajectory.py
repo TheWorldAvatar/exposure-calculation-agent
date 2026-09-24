@@ -40,13 +40,14 @@ rdf_type_to_ts_class = {
 }
 
 
-def trajectory(calculation_input: CalculationInput):
+def trajectory(calculation_input: CalculationInput, *, timeline=False):
     lowerbound = calculation_input.calculation_metadata.lowerbound
     upperbound = calculation_input.calculation_metadata.upperbound
 
     logger.info('Querying time series')
+    session_ids = [] if timeline else None
     points, trip_list, java_time_list, timestamp_list, sources = _load_trajectories(
-        calculation_input.subject, lowerbound, upperbound)
+        calculation_input.subject, lowerbound, upperbound, session_ids=session_ids)
 
     if len(points) == 0:
         logger.info('Trajectory time series is empty')
@@ -63,7 +64,7 @@ def trajectory(calculation_input: CalculationInput):
     logger.info('Processing trips')
     if trip_list:
         # split trajectory into trips
-        trips = _process_trip(trip_list, points, timestamp_list)
+        trips = _process_trip(trip_list, points, timestamp_list, session_ids=session_ids)
     else:
         # entire trajectory considered as a single trip
         trips = [Trip(full_points_list=points,
@@ -144,25 +145,32 @@ def trajectory(calculation_input: CalculationInput):
     return complete_message, 200
 
 
-def _process_trip(trip_index_array, points: list[Point], timestamp_list):
+def _process_trip(trip_index_array, points: list[Point], timestamp_list, session_ids=None):
     """
     returns a list of Trip objects
    """
+    if session_ids is not None and len(session_ids) != len(trip_index_array):
+        raise ValueError('Session IDs and trip labels are not aligned')
     trips = []
     start = 0
     for end in range(1, len(trip_index_array) + 1):
-        if end == len(trip_index_array) or trip_index_array[end] != trip_index_array[start]:
+        if (end == len(trip_index_array)
+                or trip_index_array[end] != trip_index_array[start]
+                or (session_ids is not None and trip_index_array[end] == 0
+                    and session_ids[end] != session_ids[end - 1])):
             trips.append(Trip(lower_index=start, upper_index=end - 1,
                               full_points_list=points, full_time_list=timestamp_list))
             start = end
     return trips
 
 
-def _load_trajectories(subject, lowerbound, upperbound):
+def _load_trajectories(subject, lowerbound, upperbound, *, session_ids=None):
     """Merge observations chronologically, preserving source and native time.
 
     A list denotes jointly processed trajectories belonging to one person.
     Ownership must be resolved by the caller at the authentication boundary.
+    Timeline callers supply an empty session_ids list, populated in sorted order.
+    Other callers never query session metadata or observations.
     """
     combined = isinstance(subject, list)
     subjects = list(dict.fromkeys(subject)) if combined else [subject]
@@ -170,9 +178,17 @@ def _load_trajectories(subject, lowerbound, upperbound):
         raise ValueError('Provide at least one trajectory point IRI')
     rows = []
     for point_iri in sorted(subjects):
-        trip_iri = _get_trip(point_iri)
-        points, labels, native_times, timestamps = _get_time_series_sparql(
-            point_iri, trip_iri, lowerbound, upperbound)
+        sessions = None
+        if session_ids is not None:
+            trip_iri, session_iri = _get_timeline_measures(point_iri)
+            sessions = []
+            points, labels, native_times, timestamps = _get_time_series_sparql(
+                point_iri, trip_iri, lowerbound, upperbound,
+                session_iri=session_iri, session_ids=sessions)
+        else:
+            trip_iri = _get_trip(point_iri)
+            points, labels, native_times, timestamps = _get_time_series_sparql(
+                point_iri, trip_iri, lowerbound, upperbound)
         if not points:
             continue
         if combined and trip_iri is None:
@@ -187,7 +203,8 @@ def _load_trajectories(subject, lowerbound, upperbound):
             if timestamps[i].utcoffset() is None:
                 raise ValueError('Trajectory timestamps must include a timezone')
             rows.append((timestamps[i], point_iri, i, point,
-                         labels[i] if trip_iri is not None else None, native_times[i]))
+                         labels[i] if trip_iri is not None else None, native_times[i],
+                         sessions[i] if sessions is not None else None))
     rows.sort(key=lambda row: (row[0], row[1], row[2]))
     if combined:
         seen = set()
@@ -201,6 +218,8 @@ def _load_trajectories(subject, lowerbound, upperbound):
                     raise ValueError('Nonzero trip index occurs in separate groups; rerun joint trip detection')
                 seen.add(label)
             previous = label
+    if session_ids is not None:
+        session_ids.extend(r[6] for r in rows)
     return ([r[3] for r in rows],
             [r[4] for r in rows] if rows and rows[0][4] is not None else [],
             [r[5] for r in rows], [r[0] for r in rows], [r[1] for r in rows])
@@ -243,6 +262,22 @@ def _create_result_time_series(trips: list[Trip], result_iri: str, time_list, ts
         result_list.extend(temp_list)
 
     return ts_client.create_time_series(times=time_list, data_iri_list=[result_iri], values=[result_list])
+
+
+def _get_timeline_measures(point_iri: str):
+    """Resolve the required trip and session measures in one metadata query."""
+    from agent.utils.kg_client import kg_client
+    query = f"""
+    SELECT DISTINCT ?trip ?session WHERE {{
+        <{point_iri}> <{constants.HAS_TIME_SERIES}> ?time_series.
+        ?trip <{constants.HAS_TIME_SERIES}> ?time_series; a <{constants.TRIP}>.
+        ?session <{constants.HAS_TIME_SERIES}> ?time_series; a <{constants.SESSION_ID}>.
+    }}
+    """
+    rows = json.loads(kg_client.remote_store_client.executeQuery(query).toString())
+    if len(rows) != 1:
+        raise ValueError(f'Timeline trajectory {point_iri} requires exactly one trip and session-ID measure')
+    return rows[0]['trip'], rows[0]['session']
 
 
 def _get_trip(point_iri: str):
@@ -295,7 +330,8 @@ def _get_exposure_result(calculation_input: CalculationInput):
                         query_result.toString())
 
 
-def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
+def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound,
+                            *, session_iri=None, session_ids=None):
     from agent.utils.kg_client import kg_client
 
     # check time class, exception will be thrown if checks fail
@@ -304,6 +340,8 @@ def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
     values_list = [subject]
     if trip is not None:
         values_list.append(trip)
+    if session_iri is not None:
+        values_list.append(session_iri)
     time_series = kg_client.get_time_series_data(
         values_list, lowerbound, upperbound)
 
@@ -311,6 +349,14 @@ def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
         return [], [], [], []
 
     points = [wkt.loads(s) for s in time_series.get_value_list(subject)]
+
+    if session_iri is not None:
+        sessions = time_series.get_value_list(session_iri)
+        if (len(sessions) != len(points)
+                or any(value is None or str(value).strip() == '' for value in sessions)
+                or time_series.get_timestamp(session_iri) != time_series.get_timestamp(subject)):
+            raise ValueError('Every timeline observation must have an aligned session ID')
+        session_ids.extend(sessions)
 
     if trip is not None:
         trip_list = time_series.get_value_list(trip)

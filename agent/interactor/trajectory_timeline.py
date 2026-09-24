@@ -118,6 +118,7 @@ def calculate_exposure_for_timeline():
     calculation = initialise_calculation(CalculationMetadata(
         rdf_type=rdf_type, distance=distance, **bounds))
     try:
-        return do_calculation(subject=point_iris, calculation=calculation, exposure=exposure)
+        return do_calculation(subject=point_iris, calculation=calculation, exposure=exposure,
+                              timeline=True)
     except ValueError as ex:
         return str(ex), 400
