@@ -46,6 +46,8 @@ EXPOSURE_RESULT = PREFIX_EXPOSURE + 'ExposureResult'
 DERIVATION = PREFIX_DERIVATION + 'Derivation'
 POSTGIS_SERVICE = 'https://theworldavatar.io/kg/service#PostGIS'
 
+SESSION_ID = 'https://www.theworldavatar.com/kg/ontodevice/SessionID'  # only for timeline
+
 TRAJECTORY_COUNT = PREFIX_EXPOSURE + 'TrajectoryCount'
 TRAJECTORY_AREA = PREFIX_EXPOSURE + 'TrajectoryArea'
 SIMPLE_COUNT = PREFIX_EXPOSURE + 'Count'

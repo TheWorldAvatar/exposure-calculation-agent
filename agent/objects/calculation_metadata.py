@@ -74,11 +74,12 @@ class CalculationMetadata():
             insert_triples.append(
                 f"<{calculation_iri}> <{constants.HAS_COLUMN_NAME}> \"{self.column_name}\".")
 
+        insert_body = "\n".join(insert_triples)
         query = f"""
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
         INSERT DATA {{
-            {"\n".join(insert_triples)}
+            {insert_body}
         }}
         """
         return query
@@ -86,17 +87,20 @@ class CalculationMetadata():
     def __get_where_clauses(self, var: str) -> str:
         if self.distance is not None:
             where_clauses = [
-                f"?{var} <{constants.HAS_DISTANCE}> {self.distance}."]
+                f"?{var} <{constants.HAS_DISTANCE}> ?distance.",
+                f"FILTER (?distance = {self.distance})"]
         else:
             where_clauses = [
                 f"FILTER NOT EXISTS{{?{var} <{constants.HAS_DISTANCE}> ?distance}}."]
 
         if self.upperbound is not None and is_integer(self.upperbound):
             where_clauses.append(
-                f"?{var} <{constants.HAS_UPPERBOUND}> {self.upperbound}.")
+                f"?{var} <{constants.HAS_UPPERBOUND}> ?upperbound.\n"
+                f"FILTER (?upperbound = {self.upperbound})")
         elif self.upperbound is not None and is_datetime(self.upperbound):
             where_clauses.append(
-                f"?{var} <{constants.HAS_UPPERBOUND}> \"{self.upperbound}\"^^xsd:dateTime.")
+                f"?{var} <{constants.HAS_UPPERBOUND}> ?upperbound.\n"
+                f"FILTER (?upperbound = \"{self.upperbound}\"^^xsd:dateTime)")
         elif self.upperbound is not None:
             raise CalculationMetadataException(
                 'Unsupported format of upperbound')
@@ -106,10 +110,12 @@ class CalculationMetadata():
 
         if self.lowerbound is not None and is_integer(self.lowerbound):
             where_clauses.append(
-                f"?{var} <{constants.HAS_LOWERBOUND}> {self.lowerbound}.")
+                f"?{var} <{constants.HAS_LOWERBOUND}> ?lowerbound.\n"
+                f"FILTER (?lowerbound = {self.lowerbound})")
         elif self.lowerbound is not None and is_datetime(self.lowerbound):
             where_clauses.append(
-                f"?{var} <{constants.HAS_LOWERBOUND}> \"{self.lowerbound}\"^^xsd:dateTime.")
+                f"?{var} <{constants.HAS_LOWERBOUND}> ?lowerbound.\n"
+                f"FILTER (?lowerbound = \"{self.lowerbound}\"^^xsd:dateTime)")
         elif self.lowerbound is not None:
             raise CalculationMetadataException(
                 'Unsupported format of lowerbound')
