@@ -51,6 +51,6 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 #------------------------------------
 # entry point setup
 #------------------------------------
-# Set the entrypoint
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "600", "-w", "4", "--threads", "8", "agent.app:app"]
+# Create the log directory before workers start to avoid concurrent creation.
+CMD ["sh", "-c", "mkdir -p /root/.twa/logs && exec gunicorn --bind 0.0.0.0:5000 --timeout 600 -w 4 --threads 8 agent.app:app"]
 #==================================================================================================
