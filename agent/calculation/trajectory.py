@@ -1,4 +1,5 @@
 from zoneinfo import ZoneInfo
+from dataclasses import replace
 from agent.calculation.shared_utils import instantiate_result_ontop
 from agent.objects.business_establishment import BusinessEstablishment
 from agent.objects.exposure_dataset import ExposureDataset, get_exposure_dataset
@@ -6,7 +7,7 @@ from agent.objects.schedule import AdHocSchedule, RegularSchedule, SchedulePerio
 from agent.utils import constants
 from agent.utils.ts_client import TimeSeriesClient
 from agent.calculation.calculation_input import CalculationInput
-from shapely.geometry import LineString, Point
+from shapely.geometry import MultiPoint, Point
 from twa import agentlogging
 from agent.utils.stack_gateway import stack_clients_view
 from agent.utils.postgis_client import postgis_client
@@ -39,31 +40,21 @@ rdf_type_to_ts_class = {
 }
 
 
-def trajectory(calculation_input: CalculationInput):
-    from agent.utils.kg_client import kg_client
-    # subject must be a time series
-    ts_client = TimeSeriesClient(calculation_input.subject)
+def trajectory(calculation_input: CalculationInput, *, timeline=False):
     lowerbound = calculation_input.calculation_metadata.lowerbound
     upperbound = calculation_input.calculation_metadata.upperbound
 
-    # check if there is a trip instance attached to this trajectory
-    trip_iri = _get_trip(calculation_input.subject)
-
-    data_iri_list = [calculation_input.subject]
-    if trip_iri is not None:
-        data_iri_list.append(trip_iri)
-
     logger.info('Querying time series')
-
-    points, trip_list, java_time_list, timestamp_list = _get_time_series_sparql(
-        calculation_input.subject, trip_iri, lowerbound, upperbound)
+    session_ids = [] if timeline else None
+    points, trip_list, java_time_list, timestamp_list, sources = _load_trajectories(
+        calculation_input.subject, lowerbound, upperbound, session_ids=session_ids)
 
     if len(points) == 0:
         logger.info('Trajectory time series is empty')
-        return None
+        return 'Trajectory time series is empty', 404
 
     # create temporary centroid for AEQD projection
-    centroid = LineString(points).envelope.centroid
+    centroid = MultiPoint(points).envelope.centroid
     proj4text = f"+proj=aeqd +lat_0={centroid.y} +lon_0={centroid.x} +units=m +datum=WGS84 +no_defs"
 
     transformer = Transformer.from_crs(
@@ -71,9 +62,9 @@ def trajectory(calculation_input: CalculationInput):
     points = [Point(transformer.transform(p.x, p.y)) for p in points]
 
     logger.info('Processing trips')
-    if trip_iri is not None:
+    if trip_list:
         # split trajectory into trips
-        trips = _process_trip(trip_list, points, timestamp_list)
+        trips = _process_trip(trip_list, points, timestamp_list, session_ids=session_ids)
     else:
         # entire trajectory considered as a single trip
         trips = [Trip(full_points_list=points,
@@ -141,34 +132,12 @@ def trajectory(calculation_input: CalculationInput):
                             trip.set_exposure_result(
                                 query_result[0]['exposure_result'])
 
-    # check if an existing result time series exists
-    result_iri = _get_exposure_result(calculation_input)
-
-    # create a new column sharing the same time series with trajectory if it does not exist
-    if result_iri is None:
-        logger.info("No existing result IRI found. Creating one...")
-        instantiate_result_ontop(calculation_input=calculation_input)
-        result_iri = _get_exposure_result(calculation_input)
-        if result_iri is None:
-            raise Exception("Failed to obtain new result IRI!")
-
-    if kg_client.get_time_series(result_iri) is None:
-        # add a column that shares the same time series with trajectory
-        time_series_iri = kg_client.get_time_series(calculation_input.subject)
-        ts_client.add_columns(time_series_iri=time_series_iri, data_iri=[result_iri], class_list=[
-                              rdf_type_to_ts_class[calculation_input.calculation_metadata.rdf_type]])
-
     if calculation_input.calculation_metadata.rdf_type in [constants.TRAJECTORY_TIME_FILTER_COUNT, constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED]:
         timezone = _get_time_zone(centroid)
         _process_time_filter(trips=trips, timezone=timezone,
                              exposure_dataset=exposure_dataset, calculation_type=calculation_input.calculation_metadata.rdf_type)
 
-    # create a Java time series object to upload to database
-    result_time_series = _create_result_time_series(
-        trips, result_iri=result_iri, time_list=java_time_list, ts_client=ts_client)
-
-    # uploads data to database
-    ts_client.add_time_series(result_time_series)
+    _persist_results(calculation_input, trips, sources, java_time_list)
 
     complete_message = 'Trajectory calculation complete'
     logger.info(complete_message)
@@ -176,36 +145,111 @@ def trajectory(calculation_input: CalculationInput):
     return complete_message, 200
 
 
-def _process_trip(trip_index_array, points: list[Point], timestamp_list):
+def _process_trip(trip_index_array, points: list[Point], timestamp_list, session_ids=None):
     """
     returns a list of Trip objects
    """
+    if session_ids is not None and len(session_ids) != len(trip_index_array):
+        raise ValueError('Session IDs and trip labels are not aligned')
     trips = []
-    current_trip_index = trip_index_array[0]  # index given by trip calculation
-    lowerbound_index = 0  # position in the trajectory array
-
-    # records a new trip every time the trip index changes
-    for i in range(1, len(trip_index_array)):
-        if trip_index_array[i] != current_trip_index:
-            upperbound_index = i - 1
-
-            trips.append(
-                Trip(upper_index=upperbound_index,
-                     lower_index=lowerbound_index,
-                     full_points_list=points,
-                     full_time_list=timestamp_list))
-
-            lowerbound_index = i
-            current_trip_index = trip_index_array[i]
-        elif i == len(trip_index_array) - 1:
-            upperbound_index = i
-
-            trips.append(Trip(upper_index=upperbound_index,
-                              lower_index=lowerbound_index,
-                         full_points_list=points,
-                         full_time_list=timestamp_list))
-
+    start = 0
+    for end in range(1, len(trip_index_array) + 1):
+        if (end == len(trip_index_array)
+                or trip_index_array[end] != trip_index_array[start]
+                or (session_ids is not None and trip_index_array[end] == 0
+                    and session_ids[end] != session_ids[end - 1])):
+            trips.append(Trip(lower_index=start, upper_index=end - 1,
+                              full_points_list=points, full_time_list=timestamp_list))
+            start = end
     return trips
+
+
+def _load_trajectories(subject, lowerbound, upperbound, *, session_ids=None):
+    """Merge observations chronologically, preserving source and native time.
+
+    A list denotes jointly processed trajectories belonging to one person.
+    Ownership must be resolved by the caller at the authentication boundary.
+    Timeline callers supply an empty session_ids list, populated in sorted order.
+    Other callers never query session metadata or observations.
+    """
+    combined = isinstance(subject, list)
+    subjects = list(dict.fromkeys(subject)) if combined else [subject]
+    if not subjects or any(not isinstance(s, str) or not s for s in subjects):
+        raise ValueError('Provide at least one trajectory point IRI')
+    rows = []
+    for point_iri in sorted(subjects):
+        sessions = None
+        if session_ids is not None:
+            trip_iri, session_iri = _get_timeline_measures(point_iri)
+            sessions = []
+            points, labels, native_times, timestamps = _get_time_series_sparql(
+                point_iri, trip_iri, lowerbound, upperbound,
+                session_iri=session_iri, session_ids=sessions)
+        else:
+            trip_iri = _get_trip(point_iri)
+            points, labels, native_times, timestamps = _get_time_series_sparql(
+                point_iri, trip_iri, lowerbound, upperbound)
+        if not points:
+            continue
+        if combined and trip_iri is None:
+            raise ValueError('Run joint trip detection for all devices before calculating exposure')
+        if len(points) != len(timestamps) or len(points) != len(native_times):
+            raise ValueError('Trajectory values and timestamps are not aligned')
+        if trip_iri is not None and (len(labels) != len(points) or any(v is None for v in labels)):
+            raise ValueError('Every trajectory observation must have a trip label')
+        if trip_iri is not None:
+            labels = [int(label) for label in labels]
+        for i, point in enumerate(points):
+            if timestamps[i].utcoffset() is None:
+                raise ValueError('Trajectory timestamps must include a timezone')
+            rows.append((timestamps[i], point_iri, i, point,
+                         labels[i] if trip_iri is not None else None, native_times[i],
+                         sessions[i] if sessions is not None else None))
+    rows.sort(key=lambda row: (row[0], row[1], row[2]))
+    if combined:
+        seen = set()
+        previous = None
+        for i, row in enumerate(rows):
+            label = row[4]
+            if i and row[0] == rows[i - 1][0] and label != previous:
+                raise ValueError('Conflicting trip indices at the same timestamp')
+            if i == 0 or label != previous:
+                if label != 0 and label in seen:
+                    raise ValueError('Nonzero trip index occurs in separate groups; rerun joint trip detection')
+                seen.add(label)
+            previous = label
+    if session_ids is not None:
+        session_ids.extend(r[6] for r in rows)
+    return ([r[3] for r in rows],
+            [r[4] for r in rows] if rows and rows[0][4] is not None else [],
+            [r[5] for r in rows], [r[0] for r in rows], [r[1] for r in rows])
+
+
+def _persist_results(calculation_input, trips, sources, native_times):
+    """Broadcast combined trip results back to each source time series."""
+    from agent.utils.kg_client import kg_client
+    values = [trip.exposure_result for trip in trips
+              for _ in range(trip.upper_index - trip.lower_index + 1)]
+    if len(values) != len(sources) or len(values) != len(native_times):
+        raise ValueError('Exposure results and source observations are not aligned')
+    for subject in dict.fromkeys(sources):
+        source_input = replace(calculation_input, subject=subject)
+        result_iri = _get_exposure_result(source_input)
+        if result_iri is None:
+            instantiate_result_ontop(calculation_input=source_input)
+            result_iri = _get_exposure_result(source_input)
+            if result_iri is None:
+                raise RuntimeError('Failed to obtain new result IRI')
+        ts_client = TimeSeriesClient(subject)
+        if kg_client.get_time_series(result_iri) is None:
+            ts_client.add_columns(
+                time_series_iri=kg_client.get_time_series(subject), data_iri=[result_iri],
+                class_list=[rdf_type_to_ts_class[calculation_input.calculation_metadata.rdf_type]])
+        indices = [i for i, source in enumerate(sources) if source == subject]
+        result = ts_client.create_time_series(
+            times=[native_times[i] for i in indices], data_iri_list=[result_iri],
+            values=[[values[i] for i in indices]])
+        ts_client.add_time_series(result)
 
 
 def _create_result_time_series(trips: list[Trip], result_iri: str, time_list, ts_client: TimeSeriesClient):
@@ -218,6 +262,22 @@ def _create_result_time_series(trips: list[Trip], result_iri: str, time_list, ts
         result_list.extend(temp_list)
 
     return ts_client.create_time_series(times=time_list, data_iri_list=[result_iri], values=[result_list])
+
+
+def _get_timeline_measures(point_iri: str):
+    """Resolve the required trip and session measures in one metadata query."""
+    from agent.utils.kg_client import kg_client
+    query = f"""
+    SELECT DISTINCT ?trip ?session WHERE {{
+        <{point_iri}> <{constants.HAS_TIME_SERIES}> ?time_series.
+        ?trip <{constants.HAS_TIME_SERIES}> ?time_series; a <{constants.TRIP}>.
+        ?session <{constants.HAS_TIME_SERIES}> ?time_series; a <{constants.SESSION_ID}>.
+    }}
+    """
+    rows = json.loads(kg_client.remote_store_client.executeQuery(query).toString())
+    if len(rows) != 1:
+        raise ValueError(f'Timeline trajectory {point_iri} requires exactly one trip and session-ID measure')
+    return rows[0]['trip'], rows[0]['session']
 
 
 def _get_trip(point_iri: str):
@@ -270,7 +330,8 @@ def _get_exposure_result(calculation_input: CalculationInput):
                         query_result.toString())
 
 
-def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
+def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound,
+                            *, session_iri=None, session_ids=None):
     from agent.utils.kg_client import kg_client
 
     # check time class, exception will be thrown if checks fail
@@ -279,10 +340,23 @@ def _get_time_series_sparql(subject: str, trip: str, lowerbound, upperbound):
     values_list = [subject]
     if trip is not None:
         values_list.append(trip)
+    if session_iri is not None:
+        values_list.append(session_iri)
     time_series = kg_client.get_time_series_data(
         values_list, lowerbound, upperbound)
 
+    if not time_series.get_value_list(subject):
+        return [], [], [], []
+
     points = [wkt.loads(s) for s in time_series.get_value_list(subject)]
+
+    if session_iri is not None:
+        sessions = time_series.get_value_list(session_iri)
+        if (len(sessions) != len(points)
+                or any(value is None or str(value).strip() == '' for value in sessions)
+                or time_series.get_timestamp(session_iri) != time_series.get_timestamp(subject)):
+            raise ValueError('Every timeline observation must have an aligned session ID')
+        session_ids.extend(sessions)
 
     if trip is not None:
         trip_list = time_series.get_value_list(trip)
@@ -326,7 +400,7 @@ def _process_time_filter(trips: list[Trip], timezone: str, exposure_dataset: Exp
     else:
         logger.warning(
             'Dataset start and end dates are not instantiated, hence ignored')
-        trips_to_consider = trip
+        trips_to_consider = trips
 
     # there are no valid trips
     if not trips_to_consider:
