@@ -1,4 +1,4 @@
-FROM ghcr.io/theworldavatar/stack-client:1.58.1 AS stackclients
+FROM ghcr.io/theworldavatar/stack-client:1.60.3-97-add-string-to-timeseries-ontop-mapping-SNAPSHOT AS stackclients
 #==================================================================================================
 FROM python:3.13-slim AS base
 # Keeps Python from generating .pyc files in the container

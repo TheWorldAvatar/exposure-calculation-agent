@@ -14,5 +14,5 @@ clipped_raster AS (
       AND ST_Intersects(b.geom, r.{GEOMETRY_COLUMN})
     {DATASET_FILTERS}
 )
-SELECT COALESCE(SUM((ST_SummaryStats(clipped)).sum * area), 0) AS exposure_result
+SELECT COALESCE(SUM((ST_SummaryStats(clipped)).count * area), 0) AS exposure_result
 FROM clipped_raster;
