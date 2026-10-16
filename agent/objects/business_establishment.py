@@ -118,7 +118,9 @@ class BusinessEstablishment():
         for schedule in schedules:
             # check if trip is within validity of schedule, then obtain opening hours of that specific day
             if schedule.is_valid_for_date(lowerbound_time.date()):
-                return any(period.start_time <= lowerbound_time.time() <= period.end_time or period.start_time <= upperbound_time.time() <= period.end_time for period in schedule.periods)
+                return any(lowerbound_time.time() <= period.end_time
+                           and upperbound_time.time() >= period.start_time
+                           for period in schedule.periods)
 
         return False
 
