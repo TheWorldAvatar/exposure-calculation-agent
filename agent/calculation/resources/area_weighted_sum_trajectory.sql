@@ -1,10 +1,18 @@
-WITH buffer_circle AS (
-    SELECT ST_Buffer(
-        ST_GeomFromText(%(GEOMETRY_PLACEHOLDER)s),
-        %(DISTANCE_PLACEHOLDER)s  -- buffer radius in meters
+WITH buffer AS (
+    SELECT ST_Transform(
+        ST_Buffer(ST_GeomFromText(%(GEOMETRY_PLACEHOLDER)s), %(DISTANCE_PLACEHOLDER)s),
+        %(PROJ4_TEXT)s,
+        %(RASTER_SRID)s
     ) AS geom
+),
+clipped_raster AS (
+    SELECT ST_Clip(r.{GEOMETRY_COLUMN}, b.geom) AS clipped,
+           r.{AREA_COLUMN} AS area
+    FROM {EXPOSURE_DATASET} r
+    CROSS JOIN buffer b
+    WHERE ST_ConvexHull(r.{GEOMETRY_COLUMN}) && b.geom
+      AND ST_Intersects(b.geom, r.{GEOMETRY_COLUMN})
+    {DATASET_FILTERS}
 )
-
-SELECT SUM({TEMP_TABLE}.area * {TEMP_TABLE}.val) AS exposure_result
-FROM {TEMP_TABLE}, buffer_circle
-WHERE ST_Intersects({TEMP_TABLE}.wkb_geometry, buffer_circle.geom)
+SELECT COALESCE(SUM((ST_SummaryStats(clipped)).sum * area), 0) AS exposure_result
+FROM clipped_raster;

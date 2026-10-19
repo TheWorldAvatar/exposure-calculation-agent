@@ -2,6 +2,15 @@
 
 Calculates exposure of specified subjects to features in the environment. This agent is designed to be deployed in the HD4 stack - <https://github.com/TheWorldAvatar/hd4-stack>.
 
+## Documentation
+
+- [Core API and data model](#core-api)
+- [Calculation reference](#calculation-reference)
+- [Shared calculation configuration](#shared-calculation-configuration)
+- [User facing APIs](#user-facing-apis)
+- [Time filtering](README_time_filter.md)
+- [Authenticated Timeline API](README_trajectory_timeline.md)
+
 ## Environment variables
 
 1) NAMESPACE (namespace of blazegraph, defaults to kb)
@@ -93,7 +102,7 @@ Agent considers two types of subject for exposure calculations: subject with a f
 Agent will query for the WKT literal in the following form:
 
 ```ttl
-<http://subject> geo:asWKT "POINT(1,2)"^^geo:wktLiteral
+<http://subject> geo:asWKT "POINT(1 2)"^^geo:wktLiteral
 ```
 
 #### Subject with trajectory
@@ -189,235 +198,125 @@ If trip data is not present, entire trajectory is treated as a single trip:
 | 3    | POINT(5 6)    | 1        | 4        |
 | 4    | POINT(5 6)    | 1        | 4        |
 
-### Calculation
+## Calculation reference
 
-Supported calculation types:
+Types and properties below use the namespace `https://www.theworldavatar.com/kg/ontoexposure/`, abbreviated as `exposure:`. Each subject–dataset–calculation combination has its own result instance.
 
-1. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`
-   - Applies a buffer and counts the number of intersected features around  
-2. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`
-   - Applies a buffer and sums the intersection area with the exposure dataset
-3. `<https://www.theworldavatar.com/kg/ontoexposure/Count>`
-   - Applies a buffer and counts the number of intersected features
-4. `<https://www.theworldavatar.com/kg/ontoexposure/Area>`
-   - Applies a buffer and sums the intersection area
-5. `<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`
-   - Applies a buffer, sums pixel values within the buffer, and multiplies them by pixel area. Requires pixel area for each tile to be precomputed in a column.
-6. `<https://www.theworldavatar.com/kg/ontoexposure/RasterArea>`
-   - Applies a buffer, and sums up the area. Requires pixel area for each tile to be precomputed on column.
-7. `<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`
-   - Similar to AreaWeightedSum but for trajectories
-8. `<https://www.theworldavatar.com/kg/ontoexposure/RasterAverage>`
-   - Applies a buffer, averages pixel values enclosed by the buffer
-9. `<https://www.theworldavatar.com/kg/ontoexposure/RasterSum>`
-   - Applies a buffer, sums up the pixel values enclosed by the buffer
-10. `<https://www.theworldavatar.com/kg/ontoexposure/ClosestDistance>`
-    - Gets the closest distance between the subject and features in the exposure dataset
-11. `<https://www.theworldavatar.com/kg/ontoexposure/TotalLength>`
-    - Applies a buffer, sums up the length of lines enclosed by buffer
-12. `<https://www.theworldavatar.com/kg/ontoexposure/Average>`
-    - Applies a buffer, averages the values associated with the intersected features.
-13. `<https://www.theworldavatar.com/kg/ontoexposure/WeightedAverage>`
-    - Similar to Average, but with weights
-14. `<https://www.theworldavatar.com/kg/ontoexposure/Areal>`
-    - Directly assign value associated with the intersected feature
+### Fixed geometry calculations
 
-Permissible metadata depends on the calculation type. A result instance is instantiated for each subject - exposure - calculation combination.
+Subjects have a WKT geometry via `geo:asWKT`. The core API also accepts a list of subject IRIs.
 
-The choice of projection affects the results greatly. For trajectory based calculations, azimuthal equidistant projection (AEQD) is used, the centroid is calculated from the trajectory's envelope. For calculations involving fixed points, EPSG:3857 is used to keep things simple, in case there are points that are far from each other as the AEQD projection relies on a centroid.
+| Type | Exposure dataset | Operation | SQL |
+|---|---|---|---|
+| `Count` | Vector | Count features within the specified distance | [Query](agent/calculation/resources/count.sql) |
+| `Area` | Polygon | Sum intersection area within the subject buffer | [Query](agent/calculation/resources/area.sql) |
+| `ClosestDistance` | Vector | Find the closest distance to dataset features | [Query](agent/calculation/resources/closest_distance.sql) |
+| `TotalLength` | Line | Sum line length within the subject buffer | [Query](agent/calculation/resources/total_length.sql) |
+| `Average` | Vector with values | Average values of nearby features | [Query](agent/calculation/resources/average.sql) |
+| `WeightedAverage` | Vector with values and weights | Calculate a weighted average of nearby feature values | [Query](agent/calculation/resources/weighted_average.sql) |
+| `Areal` | Vector with values | Assign the value of the intersected feature | [Query](agent/calculation/resources/areal.sql) |
+| `RasterSum` | Raster | Sum pixel values within the buffer | [Query](agent/calculation/resources/raster_sum.sql) |
+| `RasterAverage` | Raster | Average pixel values within the buffer | [Query](agent/calculation/resources/raster_average.sql) |
+| `RasterArea` | Raster with pixel areas | Sum pixel areas within the buffer | [Query](agent/calculation/resources/raster_area.sql) |
+| `AreaWeightedSum` | Raster with pixel areas | Sum pixel value × pixel area within the buffer | [Query](agent/calculation/resources/area_weighted_sum_by_raster.sql) |
 
-**Dataset filters**:
+### Trajectory calculations
 
-Any number of dataset filters can be attached to a calculation instance, for example:
+Subjects are PostGIS point time series instantiated using `com.cmclinnovations.stack.clients.timeseries.TimeSeriesRDBClient`. Calculations return one value per trip, repeated across the trip's observations. Without trip measures, the selected trajectory is treated as one trip.
 
-```sparql
-PREFIX exposure: <https://www.theworldavatar.com/kg/ontoexposure/>
+| Type | Exposure dataset | Operation | SQL / details |
+|---|---|---|---|
+| `TrajectoryCount` | Vector | Count features within the specified distance of each trip | [Query](agent/calculation/resources/count_trajectory.sql) |
+| `TrajectoryArea` | Polygon | Sum intersection area within each trip buffer | [Query](agent/calculation/resources/area_trajectory.sql) |
+| `TrajectoryAreaWeightedSum` | Raster with pixel areas | Sum pixel value × pixel area within each trip buffer | [Query](agent/calculation/resources/area_weighted_sum_trajectory.sql) |
+| `TrajectoryRasterArea` | Raster with pixel areas | Sum pixel areas within each trip buffer | [Query](agent/calculation/resources/raster_area_trajectory.sql) |
+| `TrajectoryRasterAverage` | Raster | Average pixel values within each trip buffer | [Query](agent/calculation/resources/raster_average_trajectory.sql) |
+| `TrajectoryTimeFilterCount` | Vector with feature IRIs and temporal metadata | Count nearby features whose opening hours contain the entire trip | [Time filtering](README_time_filter.md) |
+| `TrajectoryTimeFilterCountDetailed` | Vector with feature IRIs and temporal metadata | Allow trip overlap, then check the timestamp of the closest recorded GPS point against opening hours | [Time filtering](README_time_filter.md) |
 
-<http://calculation> a exposure:Area;
-    exposure:hasDatasetFilter <http://dataset_filter>.
-<http://dataset_filter> exposure:hasFilterColumn "year";
-    exposure:hasFilterValue 2000.
+For authenticated calculations across a user's devices, see the [Timeline API](README_trajectory_timeline.md).
+
+## Shared calculation configuration
+
+### Calculation instance
+
+Use `hasDistance` for buffer/proximity calculations, in metres. Trajectory calculations also accept optional `hasLowerbound` and `hasUpperbound` to select observations.
+
+```turtle
+@prefix exposure: <https://www.theworldavatar.com/kg/ontoexposure/> .
+
+<http://calculation> a exposure:TrajectoryCount;
+    exposure:hasDistance 100;
+    exposure:hasLowerbound 123;
+    exposure:hasUpperbound 456.
 ```
 
-This will add `WHERE year=2000` into the SQL queries for the calculations.
+For a fixed subject, change the type (for example, to `exposure:Count`) and omit the trajectory bounds. Bound formats depend on the calling API; the [Timeline API](README_trajectory_timeline.md) requires ISO datetimes with timezones and does not accept numeric epoch bounds.
 
-**Column name**:
+### Dataset columns
 
-Column name is required for these calculations:
+Datasets must be uploaded through the stack data uploader and located in the same stack. Geometry columns default to `wkb_geometry` for vectors and `rast` for rasters. Override them on the dataset:
 
-- `<https://www.theworldavatar.com/kg/ontoexposure/Average>`
-- `<https://www.theworldavatar.com/kg/ontoexposure/WeightedAverage>`
-- `<https://www.theworldavatar.com/kg/ontoexposure/Areal>`
+```turtle
+@prefix exposure: <https://www.theworldavatar.com/kg/ontoexposure/> .
 
-E.g.
+<http://exposure> exposure:hasGeometryColumn "custom_geometry".
+```
 
-```sparql
-PREFIX exposure: <https://www.theworldavatar.com/kg/ontoexposure/>
+`Average`, `WeightedAverage`, and `Areal` require a value column on the calculation:
+
+```turtle
+@prefix exposure: <https://www.theworldavatar.com/kg/ontoexposure/> .
 
 <http://calculation> a exposure:Areal;
     exposure:hasColumnName "value_column".
 ```
 
-#### Trajectory count (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>`)
+### Raster area metadata
 
-Overview: Counts features that are within a specified distance from the trajectory using ST_DWithin. [SQL query template here](./agent/calculation/resources/count_trajectory.sql)
+`AreaWeightedSum`, `RasterArea`, `TrajectoryAreaWeightedSum`, and `TrajectoryRasterArea` require a precomputed **pixel area** for each raster tile. The area column defaults to `area`; specify `hasAreaColumn` if it has another name. This value represents the area of one pixel in the tile, rather than the total tile area.
 
-Requirements for subject and exposure dataset:
+```turtle
+@prefix exposure: <https://www.theworldavatar.com/kg/ontoexposure/> .
 
-- Subject: contains a time series of points
-- Exposure: Any vector dataset uploaded via the stack data uploader
+<http://exposure> a exposure:AreaWeightedDataset;
+    exposure:hasAreaColumn "area";
+    exposure:hasGeometryColumn "rast".
 
-The instance of this calculation type:
-
-```sparql
-<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/TrajectoryCount>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasUpperbound> 456;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasLowerbound> 123.
+<http://calculation> a exposure:TrajectoryRasterArea;
+    exposure:hasDistance 100.
 ```
 
-Distance is mandatory, whereas upper and lower bounds are optional.
+Use pixel areas in square metres for area results in m². `TrajectoryRasterAverage` requires no area column; configure it with the same distance metadata and a raster dataset.
 
-#### Count (`<https://www.theworldavatar.com/kg/ontoexposure/Count>`)
+### Raster trajectory behaviour
 
-Overview: Counts features that are near each subject using ST_DWithin. [SQL query template here](./agent/calculation/resources/count.sql)
+The three raster trajectory calculations clip tiles to each trip buffer and exclude NoData pixels from summary statistics:
 
-Requirements:
+- `TrajectoryAreaWeightedSum`: sum each tile's retained pixel values, multiply by its pixel area, then sum across tiles.
+- `TrajectoryRasterArea`: multiply each tile's retained pixel count by its pixel area, then sum across tiles.
+- `TrajectoryRasterAverage`: divide the total retained pixel sum by the total retained pixel count across tiles.
 
-Subject: Any fixed vector with a WKT literal associated via geo:asWKT.
-Exposure: Any vector dataset uploaded via the stack data uploader.
+They return zero when no valid pixels contribute. All tiles selected by the dataset filters must share one known, positive SRID. Tiles remain in their original CRS; the agent transforms each AEQD trip buffer into that CRS before clipping.
 
-The instance of this calculation type:
+### Dataset filters
 
-```ttl
-<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/Count>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
+Attach filters to the calculation to restrict dataset rows. Multiple filters are combined, for example `year = 2000`:
+
+```turtle
+@prefix exposure: <https://www.theworldavatar.com/kg/ontoexposure/> .
+
+<http://calculation> a exposure:Area;
+    exposure:hasDistance 100;
+    exposure:hasDatasetFilter <http://dataset_filter>.
+
+<http://dataset_filter> exposure:hasFilterColumn "year";
+    exposure:hasFilterValue 2000.
 ```
 
-Exposure dataset, optional to specify a custom geometry column name, if it is not present, it will default to 'wkb_geometry'.
+### Coordinate systems
 
-```ttl
-<http://exposure> <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
-```
-
-#### Trajectory area (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>`)
-
-Overview: Calculates intersected area between the buffered trajectory and specified dataset. [SQL query template here](./agent/calculation/resources/area_trajectory.sql)
-
-Requirements:
-
-Subject: Point time series
-Exposure: A polygon dataset
-
-```sparql
-<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/TrajectoryArea>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasUpperbound> 456;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasLowerbound> 123.
-```
-
-Distance is mandatory, whereas upper and lower bounds are optional.
-
-Exposure dataset, optional to specify a custom geometry column name, if it is not present, it will default to 'wkb_geometry'.
-
-```ttl
-<http://exposure> <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
-```
-
-#### Area (`<https://www.theworldavatar.com/kg/ontoexposure/Area>`)
-
-Overview: Calculates intersected area between a buffered point and polygons in a specified dataset. [SQL query template here](./agent/calculation/resources/area.sql)
-
-Requirements:
-
-Subject: Any fixed vector with a WKT literal associated via geo:asWKT, can be a list of IRI
-Exposure: A polygon dataset
-
-```ttl
-<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/Area>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
-```
-
-Exposure dataset, optional to specify a custom geometry column name, if it is not present, it will default to 'wkb_geometry'.
-
-```ttl
-<http://exposure> <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
-```
-
-#### Area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`)
-
-Overview: Applies a buffer around a subject and find the intersected pixels in the exposure dataset. Sums up the product of area of the pixel and the value associated with the pixel.
-
-Requirements:
-
-Subject: Any vector with a WKT literal associated via geo:asWKT, can be a list of IRI
-Exposure: A raster dataset with an area attached to each tile
-
-[SQL query template here](agent/calculation/resources/area_weighted_sum_by_raster.sql).
-
-The following shows the equation:
-
-$\sum_{i=1}^N (A_i \times x_i)$
-
-where $i$ represents each cell enclosed by the buffer around the subject, $A_i=$ area of cell $i$, $N$ is the number of cells enclosed by the buffer and $x_i$ is the value associated with the cell.
-
-Calculation instance:
-
-```ttl
-<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
-```
-
-Exposure dataset, needs to have the area column specified, if geometry column is not specified, it will default to 'rast'.
-
-```ttl
-<http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
-    <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "rast".
-```
-
-#### Raster area (`<https://www.theworldavatar.com/kg/ontoexposure/RasterArea>`)
-
-Overview: Calculates the area enclosed by the buffer. Dataset is expected to have a precalculated area column for each raster tile, as area calculation is not possible on pure raster datasets.
-
-Requirements:
-
-Subject: Any vector with a WKT literal associated via geo:asWKT, can be a list of IRI
-Exposure: A raster dataset with an area attached to each tile
-
-Calculation instance:
-
-```ttl
-<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/RasterArea>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 400.
-```
-
-Exposure dataset, needs to have the area column specified, if geometry column is not specified, it will default to 'rast'.
-
-```ttl
-<http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
-    <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "rast".
-```
-
-#### Trajectory area weighted sum (`<https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>`)
-
-Similar to `<https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedSum>`, but for trajectories. Requirements are the same, except that the subject should be a point time series. [SQL query template here](agent/calculation/resources/area_weighted_sum_trajectory.sql).
-
-Calculation instance:
-
-```ttl
-<http://calculation> a <https://www.theworldavatar.com/kg/ontoexposure/TrajectoryAreaWeightedSum>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasDistance> 100.
-```
-
-Exposure dataset, needs to have the area column specified, if geometry column is not specified, it will default to 'wkb_geometry'.
-
-```ttl
-<http://exposure> a <https://www.theworldavatar.com/kg/ontoexposure/AreaWeightedDataset>;
-    <https://www.theworldavatar.com/kg/ontoexposure/hasAreaColumn> "area";
-    <https://www.theworldavatar.com/kg/ontoexposure/hasGeometryColumn> "wkb_geometry".
-```
+Projection choice affects distances and areas. Fixed geometry calculations use EPSG:3857. Trajectory calculations use a local azimuthal equidistant (AEQD) projection centred on the centroid of the trajectory's envelope. Raster trajectory calculations construct buffers in AEQD and transform them to the raster CRS before clipping.
 
 ## User facing APIs
 

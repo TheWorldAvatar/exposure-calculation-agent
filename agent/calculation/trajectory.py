@@ -26,7 +26,6 @@ logger = agentlogging.get_logger('dev')
 rdf_type_to_sql_path = {
     constants.TRAJECTORY_COUNT: "agent/calculation/resources/count_trajectory.sql",
     constants.TRAJECTORY_AREA: "agent/calculation/resources/area_trajectory.sql",
-    constants.TRAJECTORY_AREA_WEIGHTED_SUM: "agent/calculation/resources/area_weighted_sum_trajectory.sql",
     constants.TRAJECTORY_TIME_FILTER_COUNT: "agent/calculation/resources/trajectory_iri.sql",
     constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED: "agent/calculation/resources/trajectory_iri.sql"
 }
@@ -35,12 +34,26 @@ rdf_type_to_ts_class = {
     constants.TRAJECTORY_COUNT: stack_clients_view.java.lang.Integer.TYPE,
     constants.TRAJECTORY_AREA: stack_clients_view.java.lang.Double.TYPE,
     constants.TRAJECTORY_AREA_WEIGHTED_SUM: stack_clients_view.java.lang.Double.TYPE,
+    constants.TRAJECTORY_RASTER_AREA: stack_clients_view.java.lang.Double.TYPE,
+    constants.TRAJECTORY_RASTER_AVERAGE: stack_clients_view.java.lang.Double.TYPE,
     constants.TRAJECTORY_TIME_FILTER_COUNT: stack_clients_view.java.lang.Integer.TYPE,
     constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED: stack_clients_view.java.lang.Integer.TYPE
 }
 
 
 def trajectory(calculation_input: CalculationInput, *, timeline=False):
+    if calculation_input.calculation_metadata.rdf_type in constants.TRAJECTORY_RASTER_TYPES:
+        from agent.calculation.trajectory_raster import trajectory_raster
+        return trajectory_raster(calculation_input, timeline=timeline)
+    prepared = _prepare_trajectory(calculation_input, timeline=timeline)
+    if prepared is None:
+        return 'Trajectory time series is empty', 404
+    centroid, proj4text, trips, java_time_list, sources = prepared
+    return _calculate_vector_trajectory(calculation_input, centroid, proj4text, trips, java_time_list, sources)
+
+
+def _prepare_trajectory(calculation_input, *, timeline=False):
+    """Load and split observations in a local metre-based AEQD projection."""
     lowerbound = calculation_input.calculation_metadata.lowerbound
     upperbound = calculation_input.calculation_metadata.upperbound
 
@@ -51,7 +64,7 @@ def trajectory(calculation_input: CalculationInput, *, timeline=False):
 
     if len(points) == 0:
         logger.info('Trajectory time series is empty')
-        return 'Trajectory time series is empty', 404
+        return None
 
     # create temporary centroid for AEQD projection
     centroid = MultiPoint(points).envelope.centroid
@@ -72,6 +85,10 @@ def trajectory(calculation_input: CalculationInput, *, timeline=False):
                       upper_index=len(points) - 1,
                       full_time_list=timestamp_list)]
 
+    return centroid, proj4text, trips, java_time_list, sources
+
+
+def _calculate_vector_trajectory(calculation_input, centroid, proj4text, trips, java_time_list, sources):
     exposure_dataset = get_exposure_dataset(calculation_input.exposure)
 
     with open(rdf_type_to_sql_path[calculation_input.calculation_metadata.rdf_type], "r") as f:
@@ -88,24 +105,32 @@ def trajectory(calculation_input: CalculationInput, *, timeline=False):
         GEOMETRY_COLUMN=geometry_column, PROJ4_TEXT=proj4text)]
 
     # different calculation types require different additional columns
-    # area weighted sum requires area and associated value of each pixel
     # time filter needs the iri of the feature for time filtering later, where data are stored as triples
-    if calculation_input.calculation_metadata.rdf_type == constants.TRAJECTORY_AREA_WEIGHTED_SUM:
-        columns.append(exposure_dataset.area_column + ' AS area')
-    elif calculation_input.calculation_metadata.rdf_type in [constants.TRAJECTORY_TIME_FILTER_COUNT, constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED]:
+    if calculation_input.calculation_metadata.rdf_type in [constants.TRAJECTORY_TIME_FILTER_COUNT, constants.TRAJECTORY_TIME_FILTER_COUNT_DETAILED]:
         columns.append(exposure_dataset.iri_column + ' AS iri')
 
     select_clause = ",\n       ".join(columns)
 
+    where_clauses = []
+    filter_params = {}
+    for index, (column, value) in enumerate(calculation_input.calculation_metadata.dataset_filter.items()):
+        # Quote column identifiers separately from bound filter values.
+        quoted_column = '"' + column.replace('"', '""') + '"'
+        parameter = f'dataset_filter_{index}'
+        where_clauses.append(f'{quoted_column} = %({parameter})s')
+        filter_params[parameter] = value
+    dataset_filters = 'WHERE ' + ' AND '.join(where_clauses) if where_clauses else ''
+
     with open("agent/calculation/resources/temp_table_trajectory.sql", "r") as f:
         temp_table_sql = f.read()
     temp_table_sql = temp_table_sql.format(
-        TEMP_TABLE=temp_table, SELECT_CLAUSE=select_clause, EXPOSURE_DATASET=exposure_dataset.table_name)
+        TEMP_TABLE=temp_table, SELECT_CLAUSE=select_clause, EXPOSURE_DATASET=exposure_dataset.table_name,
+        DATASET_FILTERS=dataset_filters)
 
     logger.info('Submitting SQL queries for calculations')
     with postgis_client.connect() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(temp_table_sql)
+            cur.execute(temp_table_sql, filter_params)
 
             calculation_sql = calculation_sql.format(TEMP_TABLE=temp_table)
 
@@ -181,7 +206,7 @@ def _load_trajectories(subject, lowerbound, upperbound, *, session_ids=None):
         sessions = None
         if session_ids is not None:
             trip_iri, session_iri = _get_timeline_measures(point_iri)
-            sessions = []
+            sessions = [] if trip_iri is not None else None
             points, labels, native_times, timestamps = _get_time_series_sparql(
                 point_iri, trip_iri, lowerbound, upperbound,
                 session_iri=session_iri, session_ids=sessions)
@@ -191,7 +216,7 @@ def _load_trajectories(subject, lowerbound, upperbound, *, session_ids=None):
                 point_iri, trip_iri, lowerbound, upperbound)
         if not points:
             continue
-        if combined and trip_iri is None:
+        if combined and trip_iri is None and session_ids is None:
             raise ValueError('Run joint trip detection for all devices before calculating exposure')
         if len(points) != len(timestamps) or len(points) != len(native_times):
             raise ValueError('Trajectory values and timestamps are not aligned')
@@ -206,7 +231,10 @@ def _load_trajectories(subject, lowerbound, upperbound, *, session_ids=None):
                          labels[i] if trip_iri is not None else None, native_times[i],
                          sessions[i] if sessions is not None else None))
     rows.sort(key=lambda row: (row[0], row[1], row[2]))
-    if combined:
+    has_labels = any(row[4] is not None for row in rows)
+    if has_labels and any(row[4] is None for row in rows):
+        raise ValueError('Trajectory sources must either all have trip labels or all omit them')
+    if combined and has_labels:
         seen = set()
         previous = None
         for i, row in enumerate(rows):
@@ -265,19 +293,26 @@ def _create_result_time_series(trips: list[Trip], result_iri: str, time_list, ts
 
 
 def _get_timeline_measures(point_iri: str):
-    """Resolve the required trip and session measures in one metadata query."""
+    """Resolve optional trips; require sessions only when trips exist."""
     from agent.utils.kg_client import kg_client
     query = f"""
     SELECT DISTINCT ?trip ?session WHERE {{
         <{point_iri}> <{constants.HAS_TIME_SERIES}> ?time_series.
-        ?trip <{constants.HAS_TIME_SERIES}> ?time_series; a <{constants.TRIP}>.
-        ?session <{constants.HAS_TIME_SERIES}> ?time_series; a <{constants.SESSION_ID}>.
+        OPTIONAL {{
+            ?trip <{constants.HAS_TIME_SERIES}> ?time_series; a <{constants.TRIP}>.
+            OPTIONAL {{ ?session <{constants.HAS_TIME_SERIES}> ?time_series; a <{constants.SESSION_ID}>. }}
+        }}
     }}
     """
     rows = json.loads(kg_client.remote_store_client.executeQuery(query).toString())
     if len(rows) != 1:
-        raise ValueError(f'Timeline trajectory {point_iri} requires exactly one trip and session-ID measure')
-    return rows[0]['trip'], rows[0]['session']
+        raise ValueError(f'Timeline trajectory {point_iri} has missing or ambiguous timeline metadata')
+    trip = rows[0].get('trip')
+    if trip is None:
+        return None, None
+    if not rows[0].get('session'):
+        raise ValueError(f'Timeline trajectory {point_iri} with trips requires exactly one session-ID measure')
+    return trip, rows[0]['session']
 
 
 def _get_trip(point_iri: str):

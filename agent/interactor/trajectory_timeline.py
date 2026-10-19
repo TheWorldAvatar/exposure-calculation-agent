@@ -94,7 +94,18 @@ def parse_settings(args):
         bounds[name] = value
     if len(parsed) == 2 and parsed['lowerbound'] > parsed['upperbound']:
         raise ValueError('lowerbound must not exceed upperbound')
-    return rdf_type, dataset_iri, distance, bounds
+    try:
+        dataset_filter = json.loads(args.get('dataset_filter', '{}'))
+    except (ValueError, TypeError) as ex:
+        raise ValueError('dataset_filter must be a JSON object mapping columns to values') from ex
+    if not isinstance(dataset_filter, dict) or any(
+        not column or '\x00' in column
+        or not isinstance(value, (str, int, float, bool))
+        or (isinstance(value, float) and not math.isfinite(value))
+        for column, value in dataset_filter.items()
+    ):
+        raise ValueError('dataset_filter must map non-empty column names to finite numbers, strings or booleans')
+    return rdf_type, dataset_iri, distance, bounds, dataset_filter
 
 
 @trajectory_timeline_bp.route('/calculate_exposure_for_timeline', methods=['POST'])
@@ -110,6 +121,7 @@ def calculate_exposure_for_timeline():
         distance: Buffer distance in metres; must be finite and non-negative.
 
     Optional query parameters:
+        dataset_filter: JSON object mapping dataset columns to equality values.
         lowerbound, upperbound: ISO datetimes with timezones (inclusive bounds).
             If both are supplied, lowerbound must not exceed upperbound.
 
@@ -121,7 +133,7 @@ def calculate_exposure_for_timeline():
     except AuthenticationError as ex:
         return str(ex), 401, {'WWW-Authenticate': 'Bearer'}
     try:
-        rdf_type, dataset_iri, distance, bounds = parse_settings(request.args)
+        rdf_type, dataset_iri, distance, bounds, dataset_filter = parse_settings(request.args)
     except ValueError as ex:
         return str(ex), 400
 
@@ -133,7 +145,7 @@ def calculate_exposure_for_timeline():
     from agent.objects.calculation_metadata import CalculationMetadata
     from agent.calculation.api import do_calculation
     calculation = initialise_calculation(CalculationMetadata(
-        rdf_type=rdf_type, distance=distance, **bounds))
+        rdf_type=rdf_type, distance=distance, dataset_filter=dataset_filter, **bounds))
     try:
         return do_calculation(subject=point_iris, calculation=calculation, exposure=dataset_iri,
                               timeline=True)
