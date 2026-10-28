@@ -248,8 +248,8 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
             SERVICE <{BLAZEGRAPH_URL}> {{?calculation a <{calculation_type}>;
                 <{constants.HAS_DISTANCE}> ?distance.}}
             SERVICE <{ONTOP_URL}> {{VALUES ?subject {{{values}}}
-            ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
-                <{constants.IS_DERIVED_FROM}> <{exposure}>.
+            ?derivation <{constants.HAS_SUBJECT}> ?subject;
+                <{constants.HAS_EXPOSURE_DATASET}> <{exposure}>.
             ?result <{constants.BELONGS_TO}> ?derivation;
                 <{constants.EXP_HAS_VALUE}> ?value;
                 <{constants.HAS_CALCULATION_METHOD}> ?calculation.}}
@@ -279,8 +279,8 @@ def _get_subject_to_result_dict_calc_iri(subject, exposure, calculation_iri):
         SELECT ?subject ?value
         WHERE {{
             VALUES ?subject {{{values}}}
-            ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
-                <{constants.IS_DERIVED_FROM}> <{exposure}>.
+            ?derivation <{constants.HAS_SUBJECT}> ?subject;
+                <{constants.HAS_EXPOSURE_DATASET}> <{exposure}>.
             ?result <{constants.BELONGS_TO}> ?derivation;
                 <{constants.EXP_HAS_VALUE}> ?value;
                 <{constants.HAS_CALCULATION_METHOD}> <{calculation_iri}>.
@@ -338,8 +338,8 @@ def _get_distance_to_result_dict(subject, exposure, calculation_type):
     WHERE {{
         ?calculation a <{calculation_type}>;
             <{constants.HAS_DISTANCE}> ?distance.
-        ?derivation <{constants.IS_DERIVED_FROM}> <{subject}>;
-            <{constants.IS_DERIVED_FROM}> <{exposure}>.
+        ?derivation <{constants.HAS_SUBJECT}> <{subject}>;
+            <{constants.HAS_EXPOSURE_DATASET}> <{exposure}>.
         ?result <{constants.BELONGS_TO}> ?derivation;
             <{constants.HAS_CALCULATION_METHOD}> ?calculation.
     }}
