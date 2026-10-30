@@ -109,17 +109,23 @@ def instantiate_result_ontop(subject_to_value_dict: dict = None, calculation_inp
 
             execute_values(cur, insert_query, data)
 
-    # upload mapping only if it has not been uploaded
-    logger.info('Uploading ontop mapping if it does not exist')
+    # Upload missing mappings and replace mappings that use the old predicates.
+    logger.info('Checking Ontop mapping is up to date')
     _upload_ontop_mapping()
 
 
 def _upload_ontop_mapping():
     from agent.utils.kg_client import kg_client
 
-    # Don't make too general a query here. Look for a statement
-    # that can be there only if the mapping has been uploaded.
-    query = f"SELECT * WHERE {{?r a <{EXPOSURE_RESULT}>}} LIMIT 1"
+    # Check both predicates so an existing legacy mapping is also replaced.
+    query = f"""
+    SELECT ?r WHERE {{
+        ?r a <{EXPOSURE_RESULT}>;
+            <{constants.BELONGS_TO}> ?derivation.
+        ?derivation <{constants.HAS_SUBJECT}> ?subject;
+            <{constants.HAS_EXPOSURE_DATASET}> ?exposure.
+    }} LIMIT 1
+    """
 
     # currently fixed to the default ontop container
     query_result = json.loads(

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.6.0
+
+- Improved query performance by using dedicated subject and exposure dataset predicates in Ontop mappings.
+
 ## 2.5.0
 
 - Added trajectory raster area and average calculations.

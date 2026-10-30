@@ -340,8 +340,8 @@ def _get_exposure_result(calculation_input: CalculationInput):
     query = f"""
     SELECT ?result
     WHERE {{
-        ?derivation <{constants.IS_DERIVED_FROM}> <{calculation_input.subject}>;
-            <{constants.IS_DERIVED_FROM}> <{calculation_input.exposure}>.
+        ?derivation <{constants.HAS_SUBJECT}> <{calculation_input.subject}>;
+            <{constants.HAS_EXPOSURE_DATASET}> <{calculation_input.exposure}>.
         ?result a <{constants.EXPOSURE_RESULT}>;
             <{constants.BELONGS_TO}> ?derivation;
             <{constants.HAS_CALCULATION_METHOD}> <{calculation_input.calculation_metadata.iri}>.

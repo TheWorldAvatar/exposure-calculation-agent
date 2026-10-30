@@ -135,15 +135,14 @@ def non_trajectory():
             current[result_keys[-1]] = subject_to_result_dict
 
     logger.info('Producing csv file')
-    header_keys = filter_columns
+    header_keys = list(filter_columns)
     header_keys.insert(0, 'distance')
-    if calculation_metadata_list[0].column_name is not None:
+    if calculation_metadata_list and calculation_metadata_list[0].column_name is not None:
         header_keys.append("a")
     header_keys = [s[0] for s in header_keys]  # take first letter only
-    csv = _create_csv_result_keys(overall_result=overall_result, header_keys=header_keys,
-                                  subject_to_label_dict=subject_to_label_dict, subject_to_point_dict=subject_to_point_dict)
-
-    response = Response(csv.getvalue(), mimetype='text/csv')
+    output = _create_csv_result_keys(
+        overall_result, header_keys, subject_to_label_dict, subject_to_point_dict)
+    response = Response(output.getvalue(), mimetype='text/csv')
     response.headers["Content-Disposition"] = "attachment; filename=data.csv"
     return response
 
@@ -248,8 +247,8 @@ def _get_subject_to_result_dict(subject, exposure, calculation_type):
             SERVICE <{BLAZEGRAPH_URL}> {{?calculation a <{calculation_type}>;
                 <{constants.HAS_DISTANCE}> ?distance.}}
             SERVICE <{ONTOP_URL}> {{VALUES ?subject {{{values}}}
-            ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
-                <{constants.IS_DERIVED_FROM}> <{exposure}>.
+            ?derivation <{constants.HAS_SUBJECT}> ?subject;
+                <{constants.HAS_EXPOSURE_DATASET}> <{exposure}>.
             ?result <{constants.BELONGS_TO}> ?derivation;
                 <{constants.EXP_HAS_VALUE}> ?value;
                 <{constants.HAS_CALCULATION_METHOD}> ?calculation.}}
@@ -279,8 +278,8 @@ def _get_subject_to_result_dict_calc_iri(subject, exposure, calculation_iri):
         SELECT ?subject ?value
         WHERE {{
             VALUES ?subject {{{values}}}
-            ?derivation <{constants.IS_DERIVED_FROM}> ?subject;
-                <{constants.IS_DERIVED_FROM}> <{exposure}>.
+            ?derivation <{constants.HAS_SUBJECT}> ?subject;
+                <{constants.HAS_EXPOSURE_DATASET}> <{exposure}>.
             ?result <{constants.BELONGS_TO}> ?derivation;
                 <{constants.EXP_HAS_VALUE}> ?value;
                 <{constants.HAS_CALCULATION_METHOD}> <{calculation_iri}>.
@@ -338,8 +337,8 @@ def _get_distance_to_result_dict(subject, exposure, calculation_type):
     WHERE {{
         ?calculation a <{calculation_type}>;
             <{constants.HAS_DISTANCE}> ?distance.
-        ?derivation <{constants.IS_DERIVED_FROM}> <{subject}>;
-            <{constants.IS_DERIVED_FROM}> <{exposure}>.
+        ?derivation <{constants.HAS_SUBJECT}> <{subject}>;
+            <{constants.HAS_EXPOSURE_DATASET}> <{exposure}>.
         ?result <{constants.BELONGS_TO}> ?derivation;
             <{constants.HAS_CALCULATION_METHOD}> ?calculation.
     }}
@@ -484,48 +483,43 @@ def _get_trip(point_iri: str):
 
 # header_keys correspond to the hierarchy of the dict in overall_result
 def _create_csv_result_keys(overall_result, header_keys: list[str], subject_to_label_dict, subject_to_point_dict):
-    # gives results in the form of ([key1, key2, ..., subject IRI], result)
+    # Reference existing per-calculation dictionaries rather than copying every
+    # result into flattened paths and a second, transposed result dictionary.
+    columns = {}
+    subjects = {}
+
+    def collect_columns(node, path):
+        if not isinstance(node, dict):
+            raise ValueError(f"Expected result dictionary at {path}")
+        if len(path) == len(header_keys):
+            if any(isinstance(value, dict) and value for value in node.values()):
+                raise ValueError(f"Expected result values at {path}")
+            if node:
+                header = "_".join(key + str(value)
+                                  for key, value in zip(header_keys, path))
+                columns[header] = node
+                subjects.update(dict.fromkeys(node))
+            return
+        for key, value in node.items():
+            collect_columns(value, path + [key])
+
     if overall_result:
-        path_to_result_tuple = collect_paths_in_result_dict(
-            overall_result, len(header_keys)+1)  # plus 1 for subject IRI
-    else:
-        path_to_result_tuple = ()
-
-    data = []
-    subject_to_result_dict_dict = {}
-    for path_to_result in path_to_result_tuple:
-        subject = path_to_result[0][-1]
-        result = path_to_result[1]
-        result_header_info = []
-        for i in range(len(header_keys)):
-            result_header_info.append(
-                header_keys[i] + str(path_to_result[0][i]))
-        result_header = "_".join(result_header_info)
-
-        if subject not in subject_to_result_dict_dict:
-            subject_to_result_dict_dict[subject] = {result_header: result}
-        else:
-            subject_to_result_dict_dict[subject][result_header] = result
-
-    for subject in subject_to_result_dict_dict:
-        postal_code = subject_to_label_dict[subject]
-        lat = subject_to_point_dict[subject].y
-        lng = subject_to_point_dict[subject].x
-
-        row = {'postal_code': postal_code, 'lat': lat,
-               'lng': lng, 'iri': subject} | subject_to_result_dict_dict[subject]
-
-        data.append(row)
+        collect_columns(overall_result, [])
 
     output = io.StringIO()
-    if data:
-        writer = csv.DictWriter(output, fieldnames=data[0].keys())
-    else:
-        writer = csv.DictWriter(
-            output, fieldnames=['postal_code', 'lat', 'lng'])
-    writer.writeheader()
-    writer.writerows(data)
+    writer = csv.writer(output)
+    if not subjects:
+        writer.writerow(['postal_code', 'lat', 'lng'])
+        logger.info('CSV complete: 0 rows')
+        return output
 
+    writer.writerow(['postal_code', 'lat', 'lng', 'iri', *columns])
+    result_columns = list(columns.values())
+    for subject in subjects:
+        point = subject_to_point_dict[subject]
+        writer.writerow([subject_to_label_dict[subject], point.y, point.x, subject,
+                         *(values.get(subject, '') for values in result_columns)])
+    logger.info(f"CSV complete: {len(subjects)} rows")
     return output
 
 
