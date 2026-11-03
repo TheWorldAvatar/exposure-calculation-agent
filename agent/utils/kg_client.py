@@ -13,6 +13,7 @@ from py4j.java_gateway import JavaObject
 import json
 from datetime import datetime
 from rdflib.plugins.sparql.parser import parseQuery
+from agent.utils.query_ranges import fetch_time_series_rows
 
 logger = agentlogging.get_logger('dev')
 
@@ -95,28 +96,35 @@ class KgClient():
                 condition = f"""?time_number <= {upperbound}"""
             conditions.append(condition)
 
-        filter_clause = ''
-        if conditions:
-            filter_clause = f"FILTER ({' && '.join(conditions)})"
-
-        query = f"""
+        prefix = """
         PREFIX time: <http://www.w3.org/2006/time#>
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-
-        SELECT ?timestamp ?time_number ?val ?measure
-        WHERE {{
+        """
+        pattern = f"""
             VALUES ?measure {{{values_clause}}}.
             ?obs <{constants.OBSERVATION_OF}> ?measure;
                 <{constants.HAS_RESULT}>/<{constants.TS_HAS_VALUE}> ?val.
             OPTIONAL {{?obs time:hasTime/time:inXSDDateTime ?timestamp.}}
             OPTIONAL {{?obs time:hasTime/time:inTimePosition/time:numericPosition ?time_number.}}
-            {filter_clause}
-        }}
-        ORDER BY ?timestamp ?time_number
         """
 
-        query_results = kg_client.remote_store_client.executeQuery(query)
-        query_results_parsed = json.loads(query_results.toString())
+        def execute(query):
+            # Range recovery handles interrupted requests itself: retrying the
+            # same oversized response first only delays splitting.
+            return json.loads(self.remote_store_client.executeQueryOnce(query).toString())
+
+        axis = None
+        lower_expression = upper_expression = None
+        for condition in conditions:
+            variable, operator, value = condition.strip().split(' ', 2)
+            axis = variable
+            if operator == '>=':
+                lower_expression = value
+            else:
+                upper_expression = value
+        query_results_parsed = fetch_time_series_rows(
+            execute, prefix, pattern, conditions, axis,
+            lower_expression, upper_expression)
 
         time_series = TimeSeries()
         time_number_dict = {}
@@ -244,10 +252,14 @@ class RetryRemoteStoreClient:
         self.max_retries = max_retries
         self.delay = delay
 
+    def executeQueryOnce(self, query):
+        """Execute without retries when the caller owns the recovery policy."""
+        return self.java_client.executeQuery(query)
+
     def executeQuery(self, query):
         for attempt in range(1, self.max_retries + 1):
             try:
-                return self.java_client.executeQuery(query)
+                return self.executeQueryOnce(query)
             except Exception as e:
                 print(f"Attempt {attempt} failed: {e}")
                 if attempt == self.max_retries:
