@@ -102,11 +102,8 @@ def fetch_time_series_rows(execute, prefix, pattern, conditions, axis=None,
             return split(lo, hi, inclusive, depth)
 
     rows = split(start, end, True, 0)
-    # An unbounded original request can also include rows without this axis,
-    # including rows using the other time representation. Keep them explicitly.
-    if not conditions:
-        logger.info('Submitting time-series query for observations without %s', axis)
-        rows += execute(query((f'!BOUND({axis})',)))
+    # Every trajectory consistently uses one time representation, so the
+    # selected axis covers all its observations.
 
     def sort_key(row):
         timestamp = row.get('timestamp')
