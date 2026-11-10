@@ -36,14 +36,7 @@ FROM base AS debug
 RUN pip install debugpy
 
 WORKDIR /app
-CMD [ \
-    "python", "-m", "debugpy", \
-    "--listen", "0.0.0.0:5678", \
-    "--wait-for-client", \
-    "-m", "flask", "run", \
-    "-h", "0.0.0.0", \
-    "-p", "5000" \
-    ]
+CMD ["python", "-m", "agent.run", "--debug"]
 
 FROM base AS production
 RUN python -m pip install --upgrade pip setuptools wheel \
@@ -52,5 +45,5 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 # entry point setup
 #------------------------------------
 # Create the log directory before workers start to avoid concurrent creation.
-CMD ["sh", "-c", "mkdir -p /root/.twa/logs && exec gunicorn --bind 0.0.0.0:5000 --timeout 600 -w 4 --threads 8 agent.app:app"]
+CMD ["sh", "-c", "mkdir -p /root/.twa/logs && exec python -m agent.run"]
 #==================================================================================================
