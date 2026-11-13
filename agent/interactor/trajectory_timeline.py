@@ -128,7 +128,7 @@ def calculate_exposure_for_timeline():
 
     Trajectory point IRIs are resolved from the token's user identity;
     caller-supplied subject or user identity parameters are not accepted.
-    Returns HTTP 202; poll the owner-protected status_url for completion.
+    Returns HTTP 202; poll status_url for the user's queued and running jobs.
     """
     try:
         user_id = get_authenticated_user_id(request.headers.get('Authorization'))
@@ -142,21 +142,21 @@ def calculate_exposure_for_timeline():
     job_id = jobs.enqueue(dict(rdf_type=rdf_type, dataset_iri=dataset_iri,
                               distance=distance, bounds=bounds,
                               dataset_filter=dataset_filter), owner_id=user_id)
-    status_url = 'jobs/' + job_id
-    return {'job_id': job_id, 'status': 'queued', 'status_url': status_url}, 202, {'Location': status_url}
+    status_url = 'jobs/active'
+    return {'job_id': job_id, 'status': 'queued', 'status_url': status_url}, 202
 
 
-@trajectory_timeline_bp.route('/jobs/<uuid:job_id>', methods=['GET'])
-def job_status(job_id):
+@trajectory_timeline_bp.route('/jobs/active', methods=['GET'])
+def active_jobs():
     try:
         user_id = get_authenticated_user_id(request.headers.get('Authorization'))
     except AuthenticationError as ex:
         return {'error': str(ex)}, 401, {'WWW-Authenticate': 'Bearer'}
-    job = jobs.get(job_id)
-    if job is None or job['owner_id'] != user_id:
-        return {'error': 'Job not found'}, 404
-    public = {key: value for key, value in job.items() if key != 'owner_id'}
-    for key in ('created_at', 'started_at', 'finished_at', 'heartbeat_at'):
-        if public.get(key) is not None:
-            public[key] = public[key].isoformat()
-    return public
+    public_jobs = []
+    for job in jobs.active_for_owner(user_id):
+        public = {key: value for key, value in job.items() if key != 'owner_id'}
+        for key in ('created_at', 'started_at', 'finished_at', 'heartbeat_at'):
+            if public.get(key) is not None:
+                public[key] = public[key].isoformat()
+        public_jobs.append(public)
+    return public_jobs

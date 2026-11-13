@@ -37,6 +37,15 @@ class JobStore:
                 return None
             return deepcopy({k: v for k, v in job.items() if k not in ('payload', 'worker_id')})
 
+    def active_for_owner(self, owner_id):
+        with self._lock:
+            return deepcopy([
+                {k: v for k, v in job.items() if k not in ('payload', 'worker_id')}
+                for job in self._jobs.values()
+                if owner_id is not None and job['owner_id'] == owner_id
+                and job['status'] in ('queued', 'running')
+            ])
+
     def claim(self, worker_id):
         with self._lock:
             if not self._pending:
@@ -114,6 +123,9 @@ class QueueClient:
 
     def get(self, job_id):
         return self._store().get(job_id)
+
+    def active_for_owner(self, owner_id):
+        return self._store().active_for_owner(owner_id)
 
     def claim(self, worker_id):
         return self._store().claim(worker_id)

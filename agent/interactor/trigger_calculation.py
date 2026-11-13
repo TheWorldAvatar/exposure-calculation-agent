@@ -37,8 +37,8 @@ def enqueue_calculation(kind, inputs):
     if (inputs.get('subject') is None) == (inputs.get('subject_query_file') is None):
         return {'error': 'Provide either subject or subject_query_file'}, 400
     job_id = jobs.enqueue({'kind': kind, 'inputs': inputs})
-    # Relative to either POST route, including deployments under a URL prefix.
-    status_url = 'jobs/' + job_id
+    # Relative to the application's base URL, including the blueprint prefix.
+    status_url = 'trigger_calculation/jobs/' + job_id
     return {'job_id': job_id, 'status': 'queued', 'status_url': status_url}, 202, {'Location': status_url}
 
 

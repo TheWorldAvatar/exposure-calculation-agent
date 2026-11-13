@@ -1,4 +1,4 @@
-"""Start the HTTP server and four independent calculation workers."""
+"""Start the HTTP server and configurable independent calculation workers."""
 import os
 import signal
 import subprocess
@@ -12,7 +12,7 @@ def api_command(debug=False):
         return [sys.executable, '-m', 'debugpy', '--listen', '0.0.0.0:5678',
                 '--wait-for-client', '-m', 'flask', 'run', '-h', '0.0.0.0', '-p', '5000']
     return ['gunicorn', '--bind', '0.0.0.0:5000', '--timeout', '600',
-            '-w', '4', '--threads', '8', 'agent.app:app']
+            '-w', '1', '--threads', '4', 'agent.app:app']
 
 
 def signal_process_group(child, signum):
@@ -36,6 +36,9 @@ def stop_children(children):
 
 
 def main():
+    worker_count = int(os.environ.get('EXPOSURE_WORKER_CONCURRENCY', '4'))
+    if worker_count < 1:
+        raise ValueError('EXPOSURE_WORKER_CONCURRENCY must be a positive integer')
     stopping = False
 
     def stop(signum, frame):
@@ -49,7 +52,7 @@ def main():
     children = []
     result = 0
     try:
-        for _ in range(4):
+        for _ in range(worker_count):
             children.append(subprocess.Popen(
                 [sys.executable, '-m', 'agent.jobs.worker'],
                 start_new_session=True, env=environment))

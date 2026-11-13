@@ -40,8 +40,8 @@ def run_job(job, worker_id, store=jobs, execute=execute_job):
         logger.info('Exposure job %s completed successfully in %.2f seconds: %s',
                     job['id'], time.perf_counter() - started, result)
     except Exception:
-        logger.exception('Exposure job %s failed after %.2f seconds',
-                         job['id'], time.perf_counter() - started)
+        logger.exception('Exposure job %s for user %s failed after %.2f seconds',
+                         job['id'], job.get('owner_id'), time.perf_counter() - started)
         # Detailed database/endpoint errors stay in logs, not API responses.
         store.finish(job['id'], worker_id, error='Exposure calculation failed; see worker logs for job ' + job['id'])
     finally:
