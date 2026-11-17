@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.1
+
+- Changed single, bulk, and Timeline calculation requests to return HTTP 202 with a job ID for background processing. Clients must poll for completion instead of receiving results directly from the POST request.
+- Added calculation job status and authenticated Timeline active-job endpoints. Jobs are held in memory and are lost when the service restarts.
+- Added a shared calculation queue and configurable worker concurrency through `EXPOSURE_WORKER_CONCURRENCY` (default 4).
+- Improved recovery from interrupted or oversized time-series query responses by splitting queries into smaller time ranges.
+- Ensured PostGIS connections are closed after transactions.
+
 ## 2.6.0
 
 - Improved query performance by using dedicated subject and exposure dataset predicates in Ontop mappings.
