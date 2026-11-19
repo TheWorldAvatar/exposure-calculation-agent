@@ -13,7 +13,7 @@ from py4j.java_gateway import JavaObject
 import json
 from datetime import datetime
 from rdflib.plugins.sparql.parser import parseQuery
-from agent.utils.query_ranges import fetch_time_series_rows
+from agent.utils.query_ranges import fetch_time_series_rows, is_range_failure
 
 logger = agentlogging.get_logger('dev')
 
@@ -26,7 +26,8 @@ class KgClient():
     def __init__(self):
         self.remote_store_client = RetryRemoteStoreClient(stack_clients_view.RemoteStoreClient(
             STACK_OUTGOING, BLAZEGRAPH_URL))
-        self.ontop_client = stack_clients_view.RemoteStoreClient(ONTOP_URL)
+        self.ontop_client = RetryRemoteStoreClient(
+            stack_clients_view.RemoteStoreClient(ONTOP_URL))
 
         # check if namespace exists, if not initialise
         r = requests.head(BLAZEGRAPH_URL)
@@ -109,9 +110,9 @@ class KgClient():
         """
 
         def execute(query):
-            # Range recovery handles interrupted requests itself: retrying the
-            # same oversized response first only delays splitting.
-            return json.loads(self.remote_store_client.executeQueryOnce(query).toString())
+            result = self.remote_store_client.executeQuery(
+                query, split_on_failure=True)
+            return json.loads(result.toString())
 
         axis = None
         lower_expression = upper_expression = None
@@ -252,15 +253,14 @@ class RetryRemoteStoreClient:
         self.max_retries = max_retries
         self.delay = delay
 
-    def executeQueryOnce(self, query):
-        """Execute without retries when the caller owns the recovery policy."""
-        return self.java_client.executeQuery(query)
-
-    def executeQuery(self, query):
+    def executeQuery(self, query, *, split_on_failure=False):
         for attempt in range(1, self.max_retries + 1):
             try:
-                return self.executeQueryOnce(query)
+                return self.java_client.executeQuery(query)
             except Exception as e:
+                # The time-series caller handles interrupted responses by splitting.
+                if split_on_failure and is_range_failure(e):
+                    raise
                 print(f"Attempt {attempt} failed: {e}")
                 if attempt == self.max_retries:
                     raise
