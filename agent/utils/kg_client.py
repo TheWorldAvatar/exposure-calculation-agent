@@ -13,6 +13,7 @@ from py4j.java_gateway import JavaObject
 import json
 from datetime import datetime
 from rdflib.plugins.sparql.parser import parseQuery
+from agent.utils.query_ranges import fetch_time_series_rows, is_range_failure
 
 logger = agentlogging.get_logger('dev')
 
@@ -25,7 +26,8 @@ class KgClient():
     def __init__(self):
         self.remote_store_client = RetryRemoteStoreClient(stack_clients_view.RemoteStoreClient(
             STACK_OUTGOING, BLAZEGRAPH_URL))
-        self.ontop_client = stack_clients_view.RemoteStoreClient(ONTOP_URL)
+        self.ontop_client = RetryRemoteStoreClient(
+            stack_clients_view.RemoteStoreClient(ONTOP_URL))
 
         # check if namespace exists, if not initialise
         r = requests.head(BLAZEGRAPH_URL)
@@ -95,28 +97,35 @@ class KgClient():
                 condition = f"""?time_number <= {upperbound}"""
             conditions.append(condition)
 
-        filter_clause = ''
-        if conditions:
-            filter_clause = f"FILTER ({' && '.join(conditions)})"
-
-        query = f"""
+        prefix = """
         PREFIX time: <http://www.w3.org/2006/time#>
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-
-        SELECT ?timestamp ?time_number ?val ?measure
-        WHERE {{
+        """
+        pattern = f"""
             VALUES ?measure {{{values_clause}}}.
             ?obs <{constants.OBSERVATION_OF}> ?measure;
                 <{constants.HAS_RESULT}>/<{constants.TS_HAS_VALUE}> ?val.
             OPTIONAL {{?obs time:hasTime/time:inXSDDateTime ?timestamp.}}
             OPTIONAL {{?obs time:hasTime/time:inTimePosition/time:numericPosition ?time_number.}}
-            {filter_clause}
-        }}
-        ORDER BY ?timestamp ?time_number
         """
 
-        query_results = kg_client.remote_store_client.executeQuery(query)
-        query_results_parsed = json.loads(query_results.toString())
+        def execute(query):
+            result = self.remote_store_client.executeQuery(
+                query, split_on_failure=True)
+            return json.loads(result.toString())
+
+        axis = None
+        lower_expression = upper_expression = None
+        for condition in conditions:
+            variable, operator, value = condition.strip().split(' ', 2)
+            axis = variable
+            if operator == '>=':
+                lower_expression = value
+            else:
+                upper_expression = value
+        query_results_parsed = fetch_time_series_rows(
+            execute, prefix, pattern, conditions, axis,
+            lower_expression, upper_expression)
 
         time_series = TimeSeries()
         time_number_dict = {}
@@ -244,11 +253,14 @@ class RetryRemoteStoreClient:
         self.max_retries = max_retries
         self.delay = delay
 
-    def executeQuery(self, query):
+    def executeQuery(self, query, *, split_on_failure=False):
         for attempt in range(1, self.max_retries + 1):
             try:
                 return self.java_client.executeQuery(query)
             except Exception as e:
+                # The time-series caller handles interrupted responses by splitting.
+                if split_on_failure and is_range_failure(e):
+                    raise
                 print(f"Attempt {attempt} failed: {e}")
                 if attempt == self.max_retries:
                     raise

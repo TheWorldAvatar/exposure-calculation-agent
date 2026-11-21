@@ -6,7 +6,7 @@ WITH subjects AS (
     AND set_id='%set_id%'
 )
 
-SELECT a.iri, b.percentile, b.name AS name, a.wkb_geometry
+SELECT a.iri, b.percentile, a.name AS name, a.wkb_geometry
 FROM {SUBJECT_TABLE} a
 JOIN subjects b ON
 b.subject=a.iri

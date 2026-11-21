@@ -207,7 +207,7 @@ Types and properties below use the namespace `https://www.theworldavatar.com/kg/
 Subjects have a WKT geometry via `geo:asWKT`. The core API also accepts a list of subject IRIs.
 
 | Type | Exposure dataset | Operation | SQL |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `Count` | Vector | Count features within the specified distance | [Query](agent/calculation/resources/count.sql) |
 | `Area` | Polygon | Sum intersection area within the subject buffer | [Query](agent/calculation/resources/area.sql) |
 | `ClosestDistance` | Vector | Find the closest distance to dataset features | [Query](agent/calculation/resources/closest_distance.sql) |
@@ -225,7 +225,7 @@ Subjects have a WKT geometry via `geo:asWKT`. The core API also accepts a list o
 Subjects are PostGIS point time series instantiated using `com.cmclinnovations.stack.clients.timeseries.TimeSeriesRDBClient`. Calculations return one value per trip, repeated across the trip's observations. Without trip measures, the selected trajectory is treated as one trip.
 
 | Type | Exposure dataset | Operation | SQL / details |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `TrajectoryCount` | Vector | Count features within the specified distance of each trip | [Query](agent/calculation/resources/count_trajectory.sql) |
 | `TrajectoryArea` | Polygon | Sum intersection area within each trip buffer | [Query](agent/calculation/resources/area_trajectory.sql) |
 | `TrajectoryAreaWeightedSum` | Raster with pixel areas | Sum pixel value × pixel area within each trip buffer | [Query](agent/calculation/resources/area_weighted_sum_trajectory.sql) |
@@ -326,6 +326,14 @@ The following APIs are used to initialise the necessary instances and trigger th
 
 1) /trigger_calculation/ (POST)
 
+    Returns HTTP 202 immediately with JSON containing `job_id`, `status` (`queued`),
+    and a relative `status_url`. Poll that URL with GET for `queued`, `running`,
+    `succeeded`, or `failed`, and the result or error.
+    Jobs share the timeline FIFO queue, with up to four jobs running in parallel.
+    Each bulk request is one job and executes its combinations sequentially.
+    Jobs and their status
+    are held in memory and are lost when the service restarts.
+
     Parameters:
     - subject_query_file: SPARQL query template to obtain subject IRIs, bind mounted in the folder called `/app/queries`. The result of this query should give IRI(s) of subject that we wish to calculate for. The query must have one SELECT parameter and can take any name.
     - subject: IRI of subject to calculate for
@@ -394,6 +402,10 @@ The following APIs are used to initialise the necessary instances and trigger th
 
 4) /trigger_calculation/bulk (POST)
 
+    Returns HTTP 202 with the same job response and polling behavior as the single
+    trigger route. The entire batch is one background job; a failed calculation
+    fails the job and stops the remaining combinations. Completed writes remain.
+
    No parameters, instead inputs to be provided in the request body as JSON, e.g.
 
    ```bash
@@ -425,3 +437,9 @@ The following APIs are used to initialise the necessary instances and trigger th
     ```
 
     dataset_filter_values is optional. A cross product between the provided distances and dataset filters is done to produce all combinations of parameters, then calculations are executed for each of the combinations.
+
+## Background worker configuration
+
+Gunicorn uses one HTTP worker with four threads. EXPOSURE_WORKER_CONCURRENCY sets
+the number of separate calculation processes (positive integer, default 4).
+Additional jobs wait in the queue. Increase container CPU and memory as needed.

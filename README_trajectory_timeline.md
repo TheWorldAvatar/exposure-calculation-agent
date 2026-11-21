@@ -5,6 +5,13 @@ This is designed to be called by the [Timeline app](<https://github.com/TheWorld
 `POST /calculate_exposure_for_timeline` calculates exposure across the authenticated
 user's devices. A user can have multiple devices if they reinstall the app.
 
+The POST authenticates and validates settings, then returns HTTP **202** with
+`job_id`, `status: "queued"`, and `status_url: "jobs/active"`.
+Poll `GET /jobs/active` with a valid bearer token. It returns a JSON array of only
+that user's queued and running jobs, or `[]` when none are active.
+
+`EXPOSURE_WORKER_CONCURRENCY` controls simultaneous calculation processes (default 4).
+
 Configure these environment variables in the deployed agent:
 
 - `KEYCLOAK_SERVER`: Keycloak base URL, matching the token issuer's base URL.
