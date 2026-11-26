@@ -12,6 +12,7 @@ from jwt import PyJWKClient
 
 from agent.utils.env_configs import KEYCLOAK_SERVER, KEYCLOAK_REALM
 from agent.utils import constants
+from agent.jobs.store import jobs
 
 trajectory_timeline_bp = Blueprint('trajectory_timeline', __name__)
 
@@ -110,7 +111,7 @@ def parse_settings(args):
 
 @trajectory_timeline_bp.route('/calculate_exposure_for_timeline', methods=['POST'])
 def calculate_exposure_for_timeline():
-    """Calculate exposure for the authenticated user's trajectory points.
+    """Queue exposure calculation for the authenticated user's trajectory points.
 
     Required header:
         Authorization: Bearer <access-token> (a valid Keycloak user token).
@@ -127,6 +128,7 @@ def calculate_exposure_for_timeline():
 
     Trajectory point IRIs are resolved from the token's user identity;
     caller-supplied subject or user identity parameters are not accepted.
+    Returns HTTP 202; poll status_url for the user's queued and running jobs.
     """
     try:
         user_id = get_authenticated_user_id(request.headers.get('Authorization'))
@@ -137,17 +139,24 @@ def calculate_exposure_for_timeline():
     except ValueError as ex:
         return str(ex), 400
 
-    point_iris = get_owned_point_iris(user_id)
-    if not point_iris:
-        return 'No trajectory points found for authenticated user', 404
+    job_id = jobs.enqueue(dict(rdf_type=rdf_type, dataset_iri=dataset_iri,
+                              distance=distance, bounds=bounds,
+                              dataset_filter=dataset_filter), owner_id=user_id)
+    status_url = 'jobs/active'
+    return {'job_id': job_id, 'status': 'queued', 'status_url': status_url}, 202
 
-    from agent.interactor.initialise_calculation import initialise_calculation
-    from agent.objects.calculation_metadata import CalculationMetadata
-    from agent.calculation.api import do_calculation
-    calculation = initialise_calculation(CalculationMetadata(
-        rdf_type=rdf_type, distance=distance, dataset_filter=dataset_filter, **bounds))
+
+@trajectory_timeline_bp.route('/jobs/active', methods=['GET'])
+def active_jobs():
     try:
-        return do_calculation(subject=point_iris, calculation=calculation, exposure=dataset_iri,
-                              timeline=True)
-    except ValueError as ex:
-        return str(ex), 400
+        user_id = get_authenticated_user_id(request.headers.get('Authorization'))
+    except AuthenticationError as ex:
+        return {'error': str(ex)}, 401, {'WWW-Authenticate': 'Bearer'}
+    public_jobs = []
+    for job in jobs.active_for_owner(user_id):
+        public = {key: value for key, value in job.items() if key != 'owner_id'}
+        for key in ('created_at', 'started_at', 'finished_at', 'heartbeat_at'):
+            if public.get(key) is not None:
+                public[key] = public[key].isoformat()
+        public_jobs.append(public)
+    return public_jobs

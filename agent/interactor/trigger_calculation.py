@@ -5,9 +5,8 @@ from agent.calculation.api import do_calculation
 from agent.interactor.initialise_calculation import initialise_calculation
 from agent.objects.calculation_metadata import CalculationMetadata
 import agent.utils.constants as constants
-from pathlib import Path
-from rdflib.plugins.sparql.parser import parseQuery
 from agent.utils.ts_client import TimeSeriesClient
+from agent.jobs.store import jobs
 import json
 
 logger = agentlogging.get_logger('dev')
@@ -26,6 +25,36 @@ def delete_time_series():
 
 @trigger_calculation_bp.route('/bulk', methods=['POST'])
 def bulk_trigger_calculation():
+    inputs = request.get_json()
+    if not isinstance(inputs, dict):
+        return {'error': 'Provide a JSON object'}, 400
+    if not inputs.get('exposure_table') or not inputs.get('rdf_types'):
+        return {'error': 'exposure_table and rdf_types are required'}, 400
+    return enqueue_calculation('trigger_bulk', inputs)
+
+
+def enqueue_calculation(kind, inputs):
+    if (inputs.get('subject') is None) == (inputs.get('subject_query_file') is None):
+        return {'error': 'Provide either subject or subject_query_file'}, 400
+    job_id = jobs.enqueue({'kind': kind, 'inputs': inputs})
+    # Relative to the application's base URL, including the blueprint prefix.
+    status_url = 'trigger_calculation/jobs/' + job_id
+    return {'job_id': job_id, 'status': 'queued', 'status_url': status_url}, 202, {'Location': status_url}
+
+
+@trigger_calculation_bp.route('/jobs/<uuid:job_id>', methods=['GET'])
+def calculation_job_status(job_id):
+    job = jobs.get(job_id)
+    if job is None or job['owner_id'] is not None:
+        return {'error': 'Job not found'}, 404
+    public = {key: value for key, value in job.items() if key != 'owner_id'}
+    for key in ('created_at', 'started_at', 'finished_at', 'heartbeat_at'):
+        if public.get(key) is not None:
+            public[key] = public[key].isoformat()
+    return public
+
+
+def run_bulk_calculation(inputs):
     # example input of JSON request body
     # {
     #     "exposure_table": "ndvi_raster",
@@ -52,7 +81,6 @@ def bulk_trigger_calculation():
     # then a calculation is initiated for each of the combinations for each rdf_type provided
 
     from agent.utils.kg_client import kg_client
-    inputs = request.json
     exposure_table = inputs['exposure_table']
     rdf_types = inputs['rdf_types']
     if 'distances' in inputs:
@@ -115,8 +143,9 @@ def bulk_trigger_calculation():
                     logger.info('Calling core calculation agent')
 
                     # call core calculation agent
-                    do_calculation(subject=subject if subject is not None else subject_list,
-                                   calculation=calculation_iri, exposure=exposure_dataset_iri)
+                    check_calculation_response(do_calculation(
+                        subject=subject if subject is not None else subject_list,
+                        calculation=calculation_iri, exposure=exposure_dataset_iri))
 
                     logger.info(
                         f"""
@@ -129,26 +158,38 @@ def bulk_trigger_calculation():
 
 @trigger_calculation_bp.route('/', methods=['POST'])
 def trigger_calculation():
+    inputs = request.args.to_dict()
+    if not inputs.get('rdf_type') or not inputs.get('exposure_table'):
+        return {'error': 'rdf_type and exposure_table are required'}, 400
+    if inputs.get('dataset_filter'):
+        try:
+            inputs['dataset_filter'] = json.loads(inputs['dataset_filter'])
+        except ValueError:
+            return {'error': 'dataset_filter must be valid JSON'}, 400
+        if not isinstance(inputs['dataset_filter'], dict):
+            return {'error': 'dataset_filter must be a JSON object'}, 400
+    return enqueue_calculation('trigger_single', inputs)
+
+
+def run_calculation(inputs):
     from agent.utils.kg_client import kg_client
     logger.info('Received request to trigger calculation')
 
-    rdf_type = request.args.get('rdf_type')
-    distance = request.args.get('distance')
+    rdf_type = inputs.get('rdf_type')
+    distance = inputs.get('distance')
 
     # IRI(s) of subject to calculate
-    subject = request.args.get('subject')
-    exposure_table = request.args.get('exposure_table')
+    subject = inputs.get('subject')
+    exposure_table = inputs.get('exposure_table')
 
     # for trajectory time series
-    upperbound = request.args.get('upperbound')
-    lowerbound = request.args.get('lowerbound')
+    upperbound = inputs.get('upperbound')
+    lowerbound = inputs.get('lowerbound')
 
     # query to obtain subject IRIs
-    subject_query_file = request.args.get('subject_query_file')
+    subject_query_file = inputs.get('subject_query_file')
 
-    dataset_filter = request.args.get('dataset_filter')
-    if dataset_filter:
-        dataset_filter = json.loads(dataset_filter)
+    dataset_filter = inputs.get('dataset_filter')
 
     if subject is not None and subject_query_file is not None:
         raise Exception('Provide subject or subject_query_file, but not both')
@@ -171,7 +212,16 @@ def trigger_calculation():
     agent_response = do_calculation(subject=subject if subject is not None else subject_list,
                                     calculation=calculation_iri, exposure=exposure_dataset_iri)
 
-    return agent_response
+    return check_calculation_response(agent_response)
+
+
+def check_calculation_response(response):
+    if isinstance(response, tuple):
+        message, status = response[:2]
+        if not 200 <= status < 300:
+            raise ValueError(f'Calculation returned HTTP {status}: {message}')
+        return message
+    return response
 
 
 def get_dataset_iri(table_name):
